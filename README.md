@@ -48,7 +48,6 @@ with seamless Explorer right-click integration
 | 📊 | **Smart ordering** | Big files first for better throughput |
 | 🛡 | **Safety** | Free-space check, move-verify (MD5) before deleting source |
 | 🎯 | **Convenience** | Drag & drop, compact mode, error report with copy-to-clipboard |
-| 📸 | **Screenshots** | In-app capture (copy to clipboard + optional auto-save) |
 | 📦 | **Portable + safe** | Atomic I/O for settings/clipboard; uses HKCU for menu |
 
 ---
@@ -138,15 +137,11 @@ build.cmd
 
 ## 📷 Screenshots
 
-> [!TIP]
-> Screenshots can be captured in-app via the built-in screenshot tool (copies to clipboard + optional auto-save).
-> Drop your screenshots in this section to showcase SuperCopy in action!
-
 <div align="center">
 
-| Settings Panel | Context Menu |
+| Main window | Settings |
 |:---:|:---:|
-| *[Add settings screenshot here]* | *[Add context-menu screenshot here]* |
+| ![Main window](sc2.png) | ![Settings](sc1.png) |
 
 </div>
 
