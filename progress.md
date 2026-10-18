@@ -10,6 +10,8 @@
 
 ## Latest (this session)
 
+- Install now deploys the running exe to `%APPDATA%\SuperCopy\SuperCopy.exe` and points every Explorer verb at it; Remove uninstalls the menu and deletes that copy. New `Installer` class (`Install`/`Remove`), `Paths.ExeInstalled`; `ShellIntegration.IsInstalled` also requires the file; `/install` + `/uninstall` and the Settings buttons route through `Installer`; Settings Save refreshes labels against `Paths.ExeInstalled`. Remove-while-running renames the locked exe to `.old` and `Paths.Init` sweeps it. AV note: this reintroduces the `%APPDATA%` self-copy that was removed for AV reputation. Verified: build (v3.5 csc) + `/selftest` exit 0; `/install` → file + registry command point at the AppData copy; `/uninstall` → file and key gone.
+
 - Installer experiment reverted: it made AV detections worse (Program Files self-copy + HKLM uninstall key + `MoveFileEx` reboot-delete + reflection/COM shortcut = generic `MSIL/Tpyn` heuristics). Back to the portable design: per-user Explorer menu only, `/install` + `/uninstall` are menu add/remove, no `/setup`, no `Installer`/`CheckLocal`/`Admin.Relaunch(args)`.
 - Kept the AV-positive changes: `ShellIntegration.Install(exe)` registers the exe path (no `%APPDATA%` self-copy, icon = `exe,0`), `IconMaker.WriteIco`/`Paths.IcoFile` removed, self-update opens the browser, publisher metadata. Settings startup now checks the registry menu (`ShellIntegration.IsInstalled`) instead of an installed exe.
 - Verified: build (v2.0.50727) + `/selftest` exit 0.

@@ -103,11 +103,11 @@ namespace SuperCopyApp
                     case "/todevice":
                         return DoDevice(rest);
                     case "/install":
-                        ShellIntegration.Install(Application.ExecutablePath);
+                        Installer.Install();
                         Msg.Show(L.T("Explorer menu installed.", "تم تثبيت قائمة المستكشف.", "Menu de l'Explorateur installé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     case "/uninstall":
-                        ShellIntegration.Uninstall();
+                        Installer.Remove();
                         Msg.Show(L.T("Explorer menu removed.", "تمت إزالة قائمة المستكشف.", "Menu de l'Explorateur supprimé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     default:
@@ -242,7 +242,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Paths
     {
-        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini;
+        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, ExeInstalled;
 
         public static void Init()
         {
@@ -253,7 +253,9 @@ namespace SuperCopyApp
             ClipDevice = Path.Combine(AppDir, "clipboard.device.txt"); // separate so it never clobbers a pending /copy
             QueueDir = Path.Combine(AppDir, "queue");
             Ini = Path.Combine(AppDir, "settings.ini");
+            ExeInstalled = Path.Combine(AppDir, "SuperCopy.exe");
             try { Directory.CreateDirectory(QueueDir); } catch { }
+            try { File.Delete(ExeInstalled + ".old"); } catch { }   // leftover from removing while our own copy ran
         }
 
         // write via a temp file, then overwrite; a crash mid-write cannot truncate the real file
@@ -644,13 +646,14 @@ namespace SuperCopyApp
         {
             try
             {
+                if (!File.Exists(Paths.ExeInstalled)) return false;
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy\command"))
                     return k != null;   // shared HKCU keys are visible to 32- and 64-bit Explorer
             }
             catch { return false; }
         }
 
-        // registers the menu verbs to point at "exe" (no self-copy into %APPDATA%)
+        // registers the menu verbs to point at "exe" (the installed %APPDATA% copy)
         public static void Install(string exe)
         {
             string q = "\"" + exe + "\"";
@@ -711,6 +714,42 @@ namespace SuperCopyApp
         static void Notify()
         {
             try { SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); } catch { }
+        }
+    }
+
+    // ================================================================
+    //  Install / remove: deploy the running exe to %APPDATA%\SuperCopy
+    //  and point every Explorer verb at that copy, so all shell
+    //  operations use the installed exe rather than the build folder.
+    // ================================================================
+    static class Installer
+    {
+        public static void Install()
+        {
+            try
+            {
+                if (!string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
+                {
+                    Directory.CreateDirectory(Paths.AppDir);
+                    File.Copy(Application.ExecutablePath, Paths.ExeInstalled, true);
+                }
+            }
+            catch { }
+            ShellIntegration.Install(Paths.ExeInstalled);
+        }
+
+        public static void Remove()
+        {
+            ShellIntegration.Uninstall();
+            try
+            {
+                if (!File.Exists(Paths.ExeInstalled)) return;
+                // if we are the installed copy, rename it (works on a locked exe) and sweep it on next start
+                if (string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
+                    File.Move(Paths.ExeInstalled, Paths.ExeInstalled + ".old");
+                else File.Delete(Paths.ExeInstalled);
+            }
+            catch { }
         }
     }
 
@@ -2995,7 +3034,7 @@ namespace SuperCopyApp
         {
             try
             {
-                ShellIntegration.Install(Application.ExecutablePath);
+                Installer.Install();
                 RefreshState();
                 Msg.Show(this, L.T(
                     "Done.\n\n1. Right-click files/folders > Super Copy / Super Cut (move) / Copy to dest...\n2. Right-click empty space inside a folder > Super Paste here",
@@ -3008,7 +3047,7 @@ namespace SuperCopyApp
 
         void OnRemove(object s, EventArgs e)
         {
-            try { ShellIntegration.Uninstall(); RefreshState(); }
+            try { Installer.Remove(); RefreshState(); }
             catch (Exception ex) { Msg.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
@@ -3044,7 +3083,7 @@ namespace SuperCopyApp
             // menu labels live in the registry: rewrite them for the current language
             if (ShellIntegration.IsInstalled())
             {
-                try { ShellIntegration.Install(Application.ExecutablePath); } catch { }
+                try { ShellIntegration.Install(Paths.ExeInstalled); } catch { }
             }
             DialogResult = DialogResult.OK;
             Close();
