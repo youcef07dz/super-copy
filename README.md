@@ -1,4 +1,5 @@
-﻿# Super Copy
+make this design look better for github readme.md 
+# Super Copy
 
 Lightweight, multi-threaded file copier for Windows XP..11 with Explorer right-click integration.
 
