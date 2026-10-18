@@ -48,6 +48,9 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Super Copy")]
 [assembly: System.Reflection.AssemblyDescription("Lightweight multi-threaded file copier")]
+[assembly: System.Reflection.AssemblyCompany("youcef07dz")]
+[assembly: System.Reflection.AssemblyProduct("Super Copy")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
 // major part must mirror Updates.Current (v1 = 1.0.0.0); bump both + update.txt on release
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
@@ -472,7 +475,7 @@ namespace SuperCopyApp
     {
         public const int Current = 1;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
-        const string ExeUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/SuperCopy.exe";
+        const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
         public static int ParseVersion(string s)
         {
@@ -512,7 +515,7 @@ namespace SuperCopyApp
         }
 
         // offline update check: compare the running exe with the installed copy
-        // in %APPDATA% (no internet needed); newer running copy = offer to swap
+        // in %APPDATA% (no internet needed); newer running copy = offer a direct copy
         public static void CheckLocal(Form owner)
         {
             try
@@ -526,10 +529,17 @@ namespace SuperCopyApp
                     "This copy (v" + mine + ") is newer than the installed copy (v" + theirs + ").\n\n" +
                     "Update the installed copy now?",
                     "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-                try { File.Copy(self, inst, true); }                  // installed copy not running: direct swap
-                catch { DelayedCopy(self, inst, false); }             // in use: swap after it closes
-                MessageBox.Show(owner, "Installed copy updated to v" + mine + ".", "Super Copy",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                try
+                {
+                    File.Copy(self, inst, true);   // installed copy not running: direct copy
+                    MessageBox.Show(owner, "Installed copy updated to v" + mine + ".", "Super Copy",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(owner, "Could not update the installed copy. Close any running Super Copy window and try again.\n\n" + ex.Message,
+                        "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
             catch { }
         }
@@ -558,52 +568,31 @@ namespace SuperCopyApp
             OfferUpdate(owner, latest);
         }
 
-        // "version vX is available" prompt + download + swap (latest must be > Current)
+        // "version vX is available": open the release page in the browser.
+        // shortcut: no in-app download-and-swap (that dropper pattern is what AV
+        // engines flag); the user downloads the new exe from the page themselves
         public static void OfferUpdate(Form owner, int latest)
         {
             if (MessageBox.Show(owner,
                 "Version v" + latest + " is available (you have v" + Current + ").\n\n" +
-                "Download and install now?\nSuper Copy will restart.",
+                "Open the download page?",
                 "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            OpenUrl(owner, ReleasesUrl);
+        }
 
-            string tmp = Path.Combine(Path.GetTempPath(), "SuperCopy.update.exe");
+        static void OpenUrl(Form owner, string url)
+        {
             try
             {
-                using (WebClient wc = new WebClient()) wc.DownloadFile(ExeUrl, tmp);
+                ProcessStartInfo psi = new ProcessStartInfo(url);
+                psi.UseShellExecute = true;
+                Process.Start(psi);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(owner, "Download failed:\n" + ex.Message, "Super Copy",
+                MessageBox.Show(owner, "Could not open the browser:\n" + ex.Message, "Super Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
             }
-            ApplyAndRestart(tmp);
-        }
-
-        // the running exe cannot overwrite itself: a hidden helper copies it after
-        // a short delay, then relaunches; Application.Exit closes this instance first
-        // shortcut: if the user keeps a copy job running (the tray prompt) the swap fails
-        // silently and the old exe restarts; update again after the job finishes
-        static void ApplyAndRestart(string tmp)
-        {
-            DelayedCopy(tmp, Application.ExecutablePath, true);
-            Application.Exit();
-        }
-
-        // hidden helper: ping-delayed copy; relaunch = start the target afterwards
-        static void DelayedCopy(string src, string target, bool relaunch)
-        {
-            string bat = Path.Combine(Path.GetTempPath(), "SuperCopy.update.cmd");
-            File.WriteAllText(bat,
-                "@echo off\r\n" +
-                "ping -n 4 127.0.0.1 >nul\r\n" +
-                "copy /y \"" + src + "\" \"" + target + "\" >nul\r\n" +
-                (relaunch ? "start \"\" \"" + target + "\"\r\n" : "") +
-                "del \"" + bat + "\"\r\n");
-            ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c \"" + bat + "\"");
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            Process.Start(psi);
         }
     }
 

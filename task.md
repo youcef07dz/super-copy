@@ -39,3 +39,8 @@
 - [x] >15 multi-select broken again with the static cascade (Explorer drops it despite `MultiSelectModel=Player`) → reverted to flat top-level verbs (`SuperCopy`/`SuperCut`/`SuperToDevice` on `*`+`Directory`, `SuperPaste` on Background); `Cascade()` deleted; `IsInstalled` checks `*\shell\SuperCopy\command`; selftest guards 12–17 rewritten for flat layout; menu reinstalled, selftest exit 0
 - [x] Startup checks in SettingsForm `Shown`: installed = `%APPDATA%\SuperCopy\SuperCopy.exe` exists (else ask "Install now?" → `OnInstall`); version = silent `Updates.GetLatest()` on a background thread (5 s timeout, offline-safe) → `Updates.OfferUpdate` when GitHub is newer; `QuickWebClient` + `GetLatest` + `OfferUpdate` extracted
 - [x] Offline update check: `Updates.FileVer` (assembly major version; `AssemblyVersion` must mirror `Updates.Current`) + `Updates.CheckLocal` (running exe newer than %APPDATA% copy → ask, direct copy or delayed swap); wired into startup after the install check; `DelayedCopy` helper (relaunch optional); `/selftest` exit 21
+- [x] Add About button (Settings) with build time + repo link; sc3 compact screenshot + README
+- [x] AV false positives: replace auto-update download/swap with "open releases page" (remove dropper pattern); drop `ExeUrl`/`ApplyAndRestart`/`DelayedCopy`
+- [x] Add publisher metadata (`AssemblyCompany`/`Product`/`Copyright`)
+- [x] Draft AV false-positive reports (McAfee/SecureAge/Arctic Wolf)
+- [ ] Code-sign the exe (needs a real Authenticode cert + signtool; self-signed does not help reputation)
