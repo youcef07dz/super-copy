@@ -2,11 +2,11 @@
 
 Lightweight, multi-threaded file copier for Windows XP..11 with Explorer right-click integration.
 
-[**→ Download SuperCopy.exe**](SuperCopy.exe)
+[**→ Download SuperCopy.exe**](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe)
 
 ## Quick Start
 
-- [Download SuperCopy.exe](SuperCopy.exe) — single portable .exe, no installer required.
+- [Download SuperCopy.exe](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) — single portable .exe, no installer required.
 - Run SuperCopy.exe to open Settings.
 - Right-click files/folders → *Super Copy > Copy/Cut (move)/Copy to dest...*
 - Right-click empty space in a folder → *Super Paste here*
@@ -25,28 +25,28 @@ Lightweight, multi-threaded file copier for Windows XP..11 with Explorer right-c
 
 ## Download
 
-- **[Direct Download → SuperCopy.exe](SuperCopy.exe)**
+- **[Direct Download → SuperCopy.exe](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe)**
 
 ## Command Line
 
 `	ext
-SuperCopy.exe                    Open Settings
-SuperCopy.exe /install           Add Explorer right-click entries
-SuperCopy.exe /uninstall         Remove Explorer right-click entries
-SuperCopy.exe /copy <paths...>   Remember items to copy
-SuperCopy.exe /cut  <paths...>   Remember items to move
-SuperCopy.exe /paste <folder>    Copy/move remembered items here
-SuperCopy.exe /todevice          Copy selected items to chosen folder
-SuperCopy.exe /selftest          Run self-check (exit 0 if OK)
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe                    Open Settings
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /install           Add Explorer right-click entries
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /uninstall         Remove Explorer right-click entries
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /copy <paths...>   Remember items to copy
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /cut  <paths...>   Remember items to move
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /paste <folder>    Copy/move remembered items here
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /todevice          Copy selected items to chosen folder
+https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe /selftest          Run self-check (exit 0 if OK)
 `
 
 ## Build
 
-`at
+`
 build.cmd
 `
 
-Uses .NET Framework 2.0 csc.exe (built into Windows). Embeds SuperCopy.ico and outputs SuperCopy.exe to the repo root.
+Uses .NET Framework 2.0 csc.exe (built into Windows). Embeds SuperCopy.ico and outputs https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe to the repo root.
 
 ## Notes
 
