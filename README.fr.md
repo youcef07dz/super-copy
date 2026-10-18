@@ -89,6 +89,8 @@ avec une intégration transparente au menu contextuel de l'Explorateur
   </tr>
 </table>
 
+**SHA-256 :** `9890A541A4DCC5BBE4DD753135B648F06E77CAEB7D7797946A0396FA1B1F83BB`
+
 ---
 
 ## 💻 Ligne de commande

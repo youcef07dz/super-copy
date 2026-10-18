@@ -10,6 +10,8 @@
 
 ## Latest (this session)
 
+- README.md / README.ar.md / README.fr.md: added the `SuperCopy.exe` SHA-256 (`9890A541…`) under the Download table so users can verify the download.
+
 - Access-denied fallback restored: on a finished job with `AccessDenied` (and not already elevated) the window asks "Retry the failed items as administrator?"; Yes re-enqueues the failed items (`QueueFailed` → `QueueStore`) and starts an elevated instance (`Admin.Relaunch`, UAC `runas`, `/queue` mode = `MainForm(null)` fed by `PollQueue`); `retryEscalated` stops the old instance from eating its own queue file before it exits. Re-adds the self-elevation removed in the AV-hardening pass (AV risk). Verified: build (v3.5 csc) + `/selftest` exit 0; `/queue` opens and stays alive.
 
 - Install now deploys the running exe to `%APPDATA%\SuperCopy\SuperCopy.exe` and points every Explorer verb at it; Remove uninstalls the menu and deletes that copy. New `Installer` class (`Install`/`Remove`), `Paths.ExeInstalled`; `ShellIntegration.IsInstalled` also requires the file; `/install` + `/uninstall` and the Settings buttons route through `Installer`; Settings Save refreshes labels against `Paths.ExeInstalled`. Remove-while-running renames the locked exe to `.old` and `Paths.Init` sweeps it. AV note: this reintroduces the `%APPDATA%` self-copy that was removed for AV reputation. Verified: build (v3.5 csc) + `/selftest` exit 0; `/install` → file + registry command point at the AppData copy; `/uninstall` → file and key gone.
