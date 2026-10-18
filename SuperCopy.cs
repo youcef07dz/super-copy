@@ -3041,6 +3041,11 @@ namespace SuperCopyApp
             Settings.Language = Math.Max(0, Math.Min(3, cmbLang.SelectedIndex));
             L.Apply(Settings.Language);
             Settings.Save();
+            // menu labels live in the registry: rewrite them for the current language
+            if (ShellIntegration.IsInstalled())
+            {
+                try { ShellIntegration.Install(Application.ExecutablePath); } catch { }
+            }
             DialogResult = DialogResult.OK;
             Close();
         }

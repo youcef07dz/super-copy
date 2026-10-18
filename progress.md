@@ -56,6 +56,7 @@
 - Verified: build (v2.0.50727, now `/codepage:65001` in `build.cmd`) + `/selftest` exit 0; visual checks of Settings + MainForm in Arabic and English via `PrintWindow`.
 - Limits: `CopyJob.Summary` is built at job creation, so switching language mid-job leaves that label in the old language; native folder pickers follow the OS language, not the app setting.
 - README split into `README.md` / `README.ar.md` / `README.fr.md` with badge-style language buttons at the top; the Arabic file is wrapped in `<div dir="rtl">`.
+- Settings Save now rewrites the installed Explorer menu (`ShellIntegration.Install(Application.ExecutablePath)` when `IsInstalled()`), so the context-menu labels follow the selected UI language instead of keeping the install-time language.
 
 ## AV hardening (2026-10-18)
 - Removed the self-elevation path: deleted `Admin.Relaunch` (UAC `runas`), the `/queue` startup mode, `QueueFailed` re-queue and the `retryEscalated` flag. Access-denied jobs now show one informational hint ("restart as administrator") when not elevated; the app never starts another copy of itself.
