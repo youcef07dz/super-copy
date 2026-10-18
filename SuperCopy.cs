@@ -9,7 +9,6 @@
 //    SuperCopy.exe /copy <paths...>   remember items (silent)
 //    SuperCopy.exe /cut  <paths...>   remember items for a move (silent)
 //    SuperCopy.exe /paste <folder>    copy/move remembered items here
-//    SuperCopy.exe /queue             run jobs from the hand-off queue (elevated retry, no args)
 //
 //  Contents (top to bottom):
 //    Program ......... entry point, command-line modes
@@ -18,7 +17,7 @@
 //    ClipStore ....... clipboard (items remembered by /copy and /cut)
 //    QueueStore ...... hand-off queue for a running instance
 //    Bitness ......... 32/64-bit detection
-//    Admin ........... UAC elevation (retry access-denied jobs as administrator)
+//    Admin ........... admin check (no self-relaunch)
 //    Updates ......... manual update check against GitHub (update.txt)
 //    ShellIntegration  Explorer right-click menu install/remove
 //    Theme/Fmt/Gfx/IconMaker  colours, drawing helpers, tray icon
@@ -51,6 +50,9 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
+[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.0.0")]
+[assembly: System.Reflection.AssemblyTrademark("Super Copy")]
 // major part must mirror Updates.Current (v1 = 1.0.0.0); bump both + update.txt on release
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
@@ -100,9 +102,6 @@ namespace SuperCopyApp
                         return DoPaste(string.Join(" ", rest.ToArray()));
                     case "/todevice":
                         return DoDevice(rest);
-                    case "/queue":
-                        Application.Run(new MainForm(null));   // PollQueue feeds it the queued retry jobs
-                        return 0;
                     case "/install":
                         ShellIntegration.Install(Application.ExecutablePath);
                         Msg.Show(L.T("Explorer menu installed.", "تم تثبيت قائمة المستكشف.", "Menu de l'Explorateur installé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -484,34 +483,23 @@ namespace SuperCopyApp
     }
 
     // ================================================================
-    //  Windows bitness (works on .NET 2.0: IsWow64Process P/Invoke)
+    //  Windows bitness (managed: PROCESSOR_ARCHITEW6432 / ARCHITECTURE)
     // ================================================================
     static class Bitness
     {
-        [DllImport("kernel32.dll")]
-        static extern IntPtr GetCurrentProcess();
-        [DllImport("kernel32.dll")]
-        static extern bool IsWow64Process(IntPtr hProcess, out bool wow64);
-
         public static readonly bool Is64Os;
 
         static Bitness()
         {
-            Is64Os = IntPtr.Size == 8;      // 64-bit process => 64-bit OS
-            if (!Is64Os)
-            {
-                try
-                {
-                    bool wow;               // 32-bit process on 64-bit OS = WOW64
-                    if (IsWow64Process(GetCurrentProcess(), out wow)) Is64Os = wow;
-                }
-                catch { }
-            }
+            string a = Environment.GetEnvironmentVariable("PROCESSOR_ARCHITEW6432");
+            if (a == null || a.Length == 0) a = Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE");
+            Is64Os = a != null && a.IndexOf("64") >= 0;
         }
     }
 
     // ================================================================
-    //  Elevation (UAC): detect admin, relaunch elevated for retries
+    //  Admin check. No self-relaunch: the exe always runs asInvoker and
+    //  the user starts it elevated themselves when a copy needs that.
     // ================================================================
     static class Admin
     {
@@ -526,20 +514,6 @@ namespace SuperCopyApp
                 }
                 catch { return false; }
             }
-        }
-
-        // starts a second elevated instance (/queue runs the hand-off queue); false when UAC is declined
-        public static bool Relaunch()
-        {
-            try
-            {
-                ProcessStartInfo psi = new ProcessStartInfo(Application.ExecutablePath, "/queue");
-                psi.UseShellExecute = true;     // Verb=runas needs the shell
-                psi.Verb = "runas";
-                Process.Start(psi);
-                return true;
-            }
-            catch { return false; }
         }
     }
 
@@ -557,29 +531,6 @@ namespace SuperCopyApp
             if (s == null) return 0;
             int v;
             return int.TryParse(s.Trim(), out v) ? v : 0;
-        }
-
-        // short timeout so the startup check cannot hang on a dead connection
-        class QuickWebClient : WebClient
-        {
-            protected override WebRequest GetWebRequest(Uri address)
-            {
-                WebRequest r = base.GetWebRequest(address);
-                r.Timeout = 5000;
-                return r;
-            }
-        }
-
-        // silent fetch for the startup check; -1 = unreachable/invalid
-        public static int GetLatest()
-        {
-            try
-            {
-                try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { }  // TLS 1.2
-                using (WebClient wc = new QuickWebClient())
-                    return ParseVersion(wc.DownloadString(UpdateTxtUrl));
-            }
-            catch { return -1; }
         }
 
         // assembly major version of a file (mirrors Current); 0 = unreadable
@@ -1280,7 +1231,7 @@ namespace SuperCopyApp
             return sb.ToString();
         }
 
-        // access denied is the one failure a UAC relaunch can fix
+        // access denied gets a one-time hint to restart the app elevated
         internal static bool IsAccessDenied(Exception ex) { return ex is UnauthorizedAccessException; }
 
         // assert-based self-check for ErrorReport (run: SuperCopy.exe /selftest -> exit 0 ok, 1 fail)
@@ -1977,7 +1928,7 @@ namespace SuperCopyApp
         NotifyIcon tray;
         ContextMenu trayMenu;
         bool exiting, doneHandled, settingSel, compact;
-        bool adminPrompted, retryEscalated;   // access-denied -> "retry as admin?" asked / elevating
+        bool adminPrompted;   // access-denied explanation shown once
         int lastTick, tickN, closeAt = -1;
         Size savedSize;
 
@@ -2122,7 +2073,7 @@ namespace SuperCopyApp
             trayMenu.MenuItems.Add(L.T("Cancel all and exit", "إلغاء الكل والخروج", "Tout annuler et quitter"), new EventHandler(tray_Exit));
             tray.ContextMenu = trayMenu;
 
-            if (first != null) AddJob(first);   // null: /queue mode, jobs arrive via PollQueue
+            AddJob(first);
 
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 250;
@@ -2261,7 +2212,6 @@ namespace SuperCopyApp
 
         void PollQueue()
         {
-            if (retryEscalated) return;   // this instance is about to exit; the elevated one drains the queue
             string[] fs;
             try { fs = Directory.GetFiles(Paths.QueueDir, "*.job"); } catch { return; }
             if (fs.Length == 0) return;
@@ -2351,37 +2301,20 @@ namespace SuperCopyApp
         {
             if (running == null || running.Finished)
             {
-                // access denied: once per session, offer to re-run the failed items elevated
+                // access denied: once per session, explain that elevation is manual
                 if (running != null && running.Finished && running.AccessDenied &&
-                    !adminPrompted && !retryEscalated && !Admin.IsElevated)
+                    !adminPrompted && !Admin.IsElevated)
                 {
                     adminPrompted = true;
                     if (!Visible) ShowFromTray();
-                    if (Msg.Show(this,
+                    Msg.Show(this,
                         L.T("Some files could not be copied: access is denied.\n\n" +
-                            "Retry the failed items as administrator?\n" +
-                            "Super Copy will restart elevated and continue.",
+                            "Restart Super Copy as administrator if you need to copy them.",
                             "تعذّر نسخ بعض الملفات: تم رفض الوصول.\n\n" +
-                            "هل تريد إعادة المحاولة للملفات الفاشلة كمسؤول؟\n" +
-                            "ستُعاد Super Copy التشغيل بصلاحيات المسؤول وتتابع.",
+                            "أعد تشغيل Super Copy كمسؤول إذا كنت بحاجة إلى نسخها.",
                             "Certains fichiers n'ont pas pu être copiés : accès refusé.\n\n" +
-                            "Réessayer les éléments échoués en tant qu'administrateur ?\n" +
-                            "Super Copy redémarrera avec élévation et continuera."),
-                        "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-                    {
-                        // stop polling first: the UAC prompt pumps messages and the old
-                        // instance would otherwise eat its own queue file
-                        retryEscalated = true;
-                        if (QueueFailed(running) && Admin.Relaunch())
-                        {
-                            exiting = true;
-                            Close();
-                            return;
-                        }
-                        retryEscalated = false;
-                        Msg.Show(this, L.T("Could not start the elevated copy.", "تعذّر بدء النسخ بصلاحيات المسؤول.", "Impossible de démarrer la copie élevée."), "Super Copy",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
+                            "Relancez Super Copy en tant qu'administrateur si vous devez les copier."),
+                        "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
 
                 CopyJob nx = null;
@@ -2401,20 +2334,6 @@ namespace SuperCopyApp
                     AllDone();
                 }
             }
-        }
-
-        // re-enqueue the failed items of a finished job so the elevated instance picks them up
-        bool QueueFailed(CopyJob j)
-        {
-            List<string> src = new List<string>();
-            for (int i = 0; i < j.ItemCount; i++)
-            {
-                CopyItem it = j.GetItem(i);
-                if (it != null && it.State == 3 && it.Src != null) src.Add(it.Src);
-            }
-            if (src.Count == 0) return false;   // scan-time failures have no Src; user can re-run manually
-            try { QueueStore.Enqueue(j.Move, j.Dest, src); return true; }
-            catch { return false; }
         }
 
         void AllDone()
@@ -3059,25 +2978,6 @@ namespace SuperCopyApp
                     OnInstall(this, EventArgs.Empty);
                 }
             }
-            Thread th = new Thread(new ThreadStart(StartupUpdateCheck));
-            th.IsBackground = true;
-            th.Start();
-        }
-
-        // GitHub check off the UI thread (5 s timeout, silent when offline)
-        void StartupUpdateCheck()
-        {
-            try
-            {
-                int latest = Updates.GetLatest();
-                if (latest <= Updates.Current) return;
-                if (IsDisposed || !IsHandleCreated) return;
-                BeginInvoke(new EventHandler(delegate(object bs, EventArgs ea)
-                {
-                    if (!IsDisposed) Updates.OfferUpdate(this, latest);
-                }));
-            }
-            catch { }
         }
 
         void RefreshState()

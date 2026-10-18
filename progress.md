@@ -57,6 +57,15 @@
 - Limits: `CopyJob.Summary` is built at job creation, so switching language mid-job leaves that label in the old language; native folder pickers follow the OS language, not the app setting.
 - README split into `README.md` / `README.ar.md` / `README.fr.md` with badge-style language buttons at the top; the Arabic file is wrapped in `<div dir="rtl">`.
 
+## AV hardening (2026-10-18)
+- Removed the self-elevation path: deleted `Admin.Relaunch` (UAC `runas`), the `/queue` startup mode, `QueueFailed` re-queue and the `retryEscalated` flag. Access-denied jobs now show one informational hint ("restart as administrator") when not elevated; the app never starts another copy of itself.
+- Removed the startup network check: `SettingsForm` no longer spawns `StartupUpdateCheck`; deleted `Updates.GetLatest` + `QuickWebClient`. Network access now happens only on a manual "Check for updates" click.
+- Removed the kernel32 P/Invoke (`GetCurrentProcess`/`IsWow64Process`): `Bitness` reads `PROCESSOR_ARCHITEW6432`/`PROCESSOR_ARCHITECTURE`.
+- Build moved to the .NET Framework 3.5 `csc.exe`, so the explicit `asInvoker` manifest (`app.manifest` + `/win32manifest`) is now embedded; the exe still targets the .NET 2.0 runtime. README (EN/AR/FR) updated to say 3.5 csc for building, 2.0+ to run.
+- Kept: HKCU-only Explorer menu, in-process copy engine, optional Robocopy, user32 double-buffer + shell32 `SHChangeNotify` P/Invokes.
+- Verified: build OK, `/selftest` exit 0, GUI starts (Settings window stays open, no second process).
+- Limits: an unsigned exe can still be flagged generically; only Authenticode signing fixes reputation.
+
 ## Known gaps (accepted)
 - `/todevice` silently no-ops if a SuperCopy GUI is already open (single-instance mutex path).
 - Two items can resolve to the same destination path (incl. `UniqueFile` race).

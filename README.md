@@ -1,9 +1,9 @@
 <div align="center">
 
 <p>
-  <a href="README.md"><img height="30" src="https://img.shields.io/badge/English-2EA44F?style=for-the-badge" alt="English"></a>
-  <a href="README.ar.md"><img height="30" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-555?style=for-the-badge" alt="العربية"></a>
-  <a href="README.fr.md"><img height="30" src="https://img.shields.io/badge/Fran%C3%A7ais-555?style=for-the-badge" alt="Français"></a>
+  <a href="README.md">English</a>
+  <a href="README.ar.md">العربية</a>
+  <a href="README.fr.md">Français</a>
 </p>
 
 # 🚀 Super Copy
@@ -132,12 +132,13 @@ build.cmd
 ```
 
 > [!NOTE]
-> Uses **.NET Framework 2.0 csc.exe** (built into Windows). Embeds `SuperCopy.ico` and outputs `SuperCopy.exe` to the repo root.
+> Uses the **.NET Framework 3.5 `csc.exe`** (from the `v3.5` folder) with an explicit `asInvoker` **`app.manifest`** (no elevation prompt). Embeds `SuperCopy.ico` and outputs `SuperCopy.exe` to the repo root.
 
 ### Build Requirements
 
 - Windows XP or later
-- .NET Framework 2.0+ (pre-installed on Windows since Vista)
+- .NET Framework 3.5 installed (provides `csc.exe` for building)
+- Runtime target is .NET Framework 2.0+ (pre-installed on Windows since Vista)
 - No external NuGet packages required
 
 ---
@@ -148,7 +149,7 @@ build.cmd
 
 | Main window | Compact mode | Settings |
 |:---:|:---:|:---:|
-| ![Main window](sc2.png) | ![Compact mode](sc3.png) | ![Settings](sc1.png) |
+| ![Main window](screenshot/sc2.png) | ![Compact mode](screenshot/sc3.png) | ![Settings](screenshot/sc1.png) |
 
 </div>
 

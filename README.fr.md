@@ -132,12 +132,13 @@ build.cmd
 ```
 
 > [!NOTE]
-> Utilise **csc.exe de .NET Framework 2.0** (fourni avec Windows). Intègre `SuperCopy.ico` et produit `SuperCopy.exe` à la racine du dépôt.
+> Utilise le **`csc.exe` de .NET Framework 3.5** (dossier `v3.5`) avec un **`app.manifest`** explicite `asInvoker` (aucune demande d'élévation). Intègre `SuperCopy.ico` et produit `SuperCopy.exe` à la racine du dépôt.
 
 ### Prérequis de compilation
 
 - Windows XP ou ultérieur
-- .NET Framework 2.0+ (préinstallé sur Windows depuis Vista)
+- .NET Framework 3.5 installé (fournit `csc.exe` pour compiler)
+- Cible d'exécution : .NET Framework 2.0+ (préinstallé sur Windows depuis Vista)
 - Aucun paquet NuGet externe requis
 
 ---
@@ -148,7 +149,7 @@ build.cmd
 
 | Fenêtre principale | Mode compact | Réglages |
 |:---:|:---:|:---:|
-| ![Fenêtre principale](sc2.png) | ![Mode compact](sc3.png) | ![Réglages](sc1.png) |
+| ![Fenêtre principale](screenshot/sc2.png) | ![Mode compact](screenshot/sc3.png) | ![Réglages](screenshot/sc1.png) |
 
 </div>
 

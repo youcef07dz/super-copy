@@ -134,12 +134,13 @@ build.cmd
 ```
 
 > [!NOTE]
-> يستخدم **csc.exe من .NET Framework 2.0** (مضمّن في ويندوز). يضمّن `SuperCopy.ico` وينتج `SuperCopy.exe` في جذر المستودع.
+> يستخدم **`csc.exe` من .NET Framework 3.5** (من مجلد `v3.5`) مع ملف **`app.manifest`** صريح بمستوى `asInvoker` (بدون طلب رفع الصلاحيات). يضمّن `SuperCopy.ico` وينتج `SuperCopy.exe` في جذر المستودع.
 
 ### متطلبات البناء
 
 - ويندوز XP أو أحدث
-- .NET Framework 2.0+ (مثبّت مسبقاً في ويندوز منذ Vista)
+- .NET Framework 3.5 مثبّت (يوفّر `csc.exe` للبناء)
+- هدف التشغيل هو .NET Framework 2.0+ (مثبّت مسبقاً في ويندوز منذ Vista)
 - لا حاجة إلى حزم NuGet خارجية
 
 ---
@@ -150,7 +151,7 @@ build.cmd
 
 | النافذة الرئيسية | الوضع المضغوط | الإعدادات |
 |:---:|:---:|:---:|
-| ![النافذة الرئيسية](sc2.png) | ![الوضع المضغوط](sc3.png) | ![الإعدادات](sc1.png) |
+| ![النافذة الرئيسية](screenshot/sc2.png) | ![الوضع المضغوط](screenshot/sc3.png) | ![الإعدادات](screenshot/sc1.png) |
 
 </div>
 
