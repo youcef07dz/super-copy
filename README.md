@@ -42,7 +42,7 @@ with seamless Explorer right-click integration
 |  | Feature | Description |
 |:---:|---|---|
 | ⚡ | **Fast** | Multi-threaded copying with smart concurrency, auto-tuned by file size |
-| 🖱 | **Explorer integration** | Cascade menu (Copy, Cut/move, Copy to dest…) + *Super Paste here* on folder background |
+| 🖱 | **Explorer integration** | Right-click verbs (Copy, Cut/move, Copy to dest…) + *Super Paste here* on folder background |
 | 🔧 | **Engines** | Built-in engine or optional Windows Robocopy |
 | ⚖ | **Conflicts** | Overwrite · Skip · Keep both (rename) · Overwrite if newer · Ask first |
 | 📊 | **Smart ordering** | Big files first for better throughput |

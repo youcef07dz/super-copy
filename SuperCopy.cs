@@ -48,6 +48,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Super Copy")]
 [assembly: System.Reflection.AssemblyDescription("Lightweight multi-threaded file copier")]
+// major part must mirror Updates.Current (v1 = 1.0.0.0); bump both + update.txt on release
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
 namespace SuperCopyApp
@@ -254,6 +255,7 @@ namespace SuperCopyApp
         public static volatile int BufferKB = DefaultBufferKB;         // copy buffer per thread
         public static volatile int Conflict = DefaultConflict;         // 0 overwrite, 1 skip, 2 keep both, 3 overwrite if newer, 4 ask
         public static volatile int AskSession = -1;   // "ask first" answer kept for this run only (-1 = none yet)
+        public static int AskPrompting;               // 1 while a worker owns the "ask first" dialog (Interlocked)
         public static volatile int Engine = DefaultEngine;             // 0 built-in, 1 robocopy
         public static bool RobocopyAvailable { get { try { return File.Exists(Path.Combine(Environment.SystemDirectory, "robocopy.exe")); } catch { return false; } } }
         public static bool AutoClose = false;
@@ -468,7 +470,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 1;
+        public const int Current = 1;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ExeUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/SuperCopy.exe";
 
@@ -477,6 +479,59 @@ namespace SuperCopyApp
             if (s == null) return 0;
             int v;
             return int.TryParse(s.Trim(), out v) ? v : 0;
+        }
+
+        // short timeout so the startup check cannot hang on a dead connection
+        class QuickWebClient : WebClient
+        {
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                WebRequest r = base.GetWebRequest(address);
+                r.Timeout = 5000;
+                return r;
+            }
+        }
+
+        // silent fetch for the startup check; -1 = unreachable/invalid
+        public static int GetLatest()
+        {
+            try
+            {
+                try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { }  // TLS 1.2
+                using (WebClient wc = new QuickWebClient())
+                    return ParseVersion(wc.DownloadString(UpdateTxtUrl));
+            }
+            catch { return -1; }
+        }
+
+        // assembly major version of a file (mirrors Current); 0 = unreadable
+        public static int FileVer(string path)
+        {
+            try { return FileVersionInfo.GetVersionInfo(path).FileMajorPart; }
+            catch { return 0; }
+        }
+
+        // offline update check: compare the running exe with the installed copy
+        // in %APPDATA% (no internet needed); newer running copy = offer to swap
+        public static void CheckLocal(Form owner)
+        {
+            try
+            {
+                string self = Application.ExecutablePath;
+                string inst = Paths.ExeInstalled;
+                if (string.Equals(Path.GetFullPath(self), Path.GetFullPath(inst), StringComparison.OrdinalIgnoreCase)) return;
+                int mine = FileVer(self), theirs = FileVer(inst);
+                if (mine <= 0 || theirs <= 0 || mine <= theirs) return;
+                if (MessageBox.Show(owner,
+                    "This copy (v" + mine + ") is newer than the installed copy (v" + theirs + ").\n\n" +
+                    "Update the installed copy now?",
+                    "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                try { File.Copy(self, inst, true); }                  // installed copy not running: direct swap
+                catch { DelayedCopy(self, inst, false); }             // in use: swap after it closes
+                MessageBox.Show(owner, "Installed copy updated to v" + mine + ".", "Super Copy",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch { }
         }
 
         public static void Check(Form owner)
@@ -500,6 +555,12 @@ namespace SuperCopyApp
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            OfferUpdate(owner, latest);
+        }
+
+        // "version vX is available" prompt + download + swap (latest must be > Current)
+        public static void OfferUpdate(Form owner, int latest)
+        {
             if (MessageBox.Show(owner,
                 "Version v" + latest + " is available (you have v" + Current + ").\n\n" +
                 "Download and install now?\nSuper Copy will restart.",
@@ -521,23 +582,28 @@ namespace SuperCopyApp
 
         // the running exe cannot overwrite itself: a hidden helper copies it after
         // a short delay, then relaunches; Application.Exit closes this instance first
-        // shortcut: if the user keeps a copy job running (tray prompt) the swap fails
+        // shortcut: if the user keeps a copy job running (the tray prompt) the swap fails
         // silently and the old exe restarts; update again after the job finishes
         static void ApplyAndRestart(string tmp)
         {
-            string target = Application.ExecutablePath;
+            DelayedCopy(tmp, Application.ExecutablePath, true);
+            Application.Exit();
+        }
+
+        // hidden helper: ping-delayed copy; relaunch = start the target afterwards
+        static void DelayedCopy(string src, string target, bool relaunch)
+        {
             string bat = Path.Combine(Path.GetTempPath(), "SuperCopy.update.cmd");
             File.WriteAllText(bat,
                 "@echo off\r\n" +
                 "ping -n 4 127.0.0.1 >nul\r\n" +
-                "copy /y \"" + tmp + "\" \"" + target + "\" >nul\r\n" +
-                "start \"\" \"" + target + "\"\r\n" +
+                "copy /y \"" + src + "\" \"" + target + "\" >nul\r\n" +
+                (relaunch ? "start \"\" \"" + target + "\"\r\n" : "") +
                 "del \"" + bat + "\"\r\n");
             ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c \"" + bat + "\"");
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             Process.Start(psi);
-            Application.Exit();
         }
     }
 
@@ -549,59 +615,32 @@ namespace SuperCopyApp
         [DllImport("shell32.dll")]
         static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
-        // one cascaded "Super Copy" submenu for files+folders; paste is a plain
-        // top-level verb on empty space only;
-        // MultiSelectModel=Player on every parent (and leaf): with the default
-        // Document model Explorer drops the cascade on multi-select and falls
-        // back to the selection's default verb
+        // flat top-level verbs only: a static cascade (ExtendedSubCommandsKey)
+        // disappears from the menu on multi-selections over ~15 items even with
+        // MultiSelectModel=Player, while flat Player verbs keep working (MS docs:
+        // legacy Player verbs show up to 100 items); paste is empty-space only
         static readonly string[] AllKeys = new string[] {
             @"*\shell\SuperCopy",
+            @"*\shell\SuperCut",
+            @"*\shell\SuperToDevice",
             @"Directory\shell\SuperCopy",
+            @"Directory\shell\SuperCut",
+            @"Directory\shell\SuperToDevice",
             @"Directory\Background\shell\SuperPaste" };
 
-        // retired keys: the flat verbs of the previous version and older leftovers
+        // retired keys: cascade leftovers and older flat names
         static readonly string[] OldKeys = new string[] {
             @"*\shell\SuperCopy.Copy",
             @"*\shell\SuperCopy.Cut",
-            @"*\shell\SuperCut",
-            @"*\shell\SuperToDevice",
             @"Directory\shell\SuperCopy.Copy",
             @"Directory\shell\SuperCopy.Cut",
             @"Directory\shell\SuperCopy.Paste",
-            @"Directory\shell\SuperCut",
-            @"Directory\shell\SuperToDevice",
             @"Directory\shell\SuperPaste",
             @"Directory\Background\shell\SuperCopy.Paste",
             @"Directory\Background\shell\SuperCopy",
             @"Drive\shell\SuperCopy.Paste",
             @"Drive\shell\SuperCopy",
             @"Drive\shell\SuperPaste" };
-
-        static void Cascade(RegistryKey cls, string basePath, string ico, string q, string[][] verbs)
-        {
-            // ExtendedSubCommandsKey is resolved against HKEY_CLASSES_ROOT, so drop the Wow6432Node view prefix
-            string refPath = basePath.StartsWith(@"Wow6432Node\", StringComparison.Ordinal)
-                ? basePath.Substring(@"Wow6432Node\".Length) : basePath;
-            using (RegistryKey top = cls.CreateSubKey(basePath))
-            {
-                top.DeleteValue("", false);            // a cascade key's default value must be empty
-                top.SetValue("MUIVerb", "Super Copy");
-                top.SetValue("Icon", ico);
-                top.SetValue("ExtendedSubCommandsKey", refPath); // verbs live under this key's own shell subkey
-                top.SetValue("MultiSelectModel", "Player");
-            }
-            foreach (string[] v in verbs)   // name, label, command
-            {
-                using (RegistryKey k = cls.CreateSubKey(basePath + @"\shell\" + v[0]))
-                {
-                    k.SetValue("", v[1]);
-                    k.SetValue("Icon", ico);
-                    k.SetValue("MultiSelectModel", "Player");
-                }
-                using (RegistryKey c = cls.CreateSubKey(basePath + @"\shell\" + v[0] + @"\command"))
-                    c.SetValue("", q + " " + v[2]);
-            }
-        }
 
         static void Verb(RegistryKey cls, string key, string label, string ico, string q, string arg)
         {
@@ -619,7 +658,7 @@ namespace SuperCopyApp
         {
             try
             {
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy\shell\Copy\command"))
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy\command"))
                     return k != null;   // shared HKCU keys are visible to 32- and 64-bit Explorer
             }
             catch { return false; }
@@ -659,15 +698,13 @@ namespace SuperCopyApp
         static void AddVerbs(RegistryKey cls, bool wow, string ico, string q)
         {
             string p = wow ? @"Wow6432Node\" : "";
-            Cascade(cls, p + @"*\shell\SuperCopy", ico, q, new string[][] {
-                new string[] { "Copy",     "Super Copy",       "/copy \"%1\"" },
-                new string[] { "Cut",      "Super Cut (move)", "/cut \"%1\"" },
-                new string[] { "ToDevice", "Copy to dest...",  "/todevice \"%1\"" } });
-            Cascade(cls, p + @"Directory\shell\SuperCopy", ico, q, new string[][] {
-                new string[] { "Copy",     "Super Copy",       "/copy \"%1\"" },
-                new string[] { "Cut",      "Super Cut (move)", "/cut \"%1\"" },
-                new string[] { "ToDevice", "Copy to dest...",  "/todevice \"%1\"" } });
-            // empty space only: %V is the folder itself, no submenu
+            foreach (string root in new string[] { @"*\shell", @"Directory\shell" })
+            {
+                Verb(cls, p + root + @"\SuperCopy", "Super Copy", ico, q, "/copy \"%1\"");
+                Verb(cls, p + root + @"\SuperCut", "Super Cut (move)", ico, q, "/cut \"%1\"");
+                Verb(cls, p + root + @"\SuperToDevice", "Copy to dest...", ico, q, "/todevice \"%1\"");
+            }
+            // empty space only: %V is the folder itself
             Verb(cls, p + @"Directory\Background\shell\SuperPaste", "Super Paste here", ico, q, "/paste \"%V\"");
         }
 
@@ -1039,6 +1076,7 @@ namespace SuperCopyApp
         {
             Started = true;
             Settings.AskSession = -1;
+            Settings.AskPrompting = 0;
             int n = Settings.SmartConcurrency ? 1 : Math.Max(1, Math.Min(32, Settings.Concurrency));
             lock (sync) { workers += n; }
             Thread st = new Thread(new ThreadStart(ScanMain), 256 * 1024);
@@ -1318,19 +1356,67 @@ namespace SuperCopyApp
             if (Updates.ParseVersion(" 1 ") != 1) return 19;
             if (Updates.ParseVersion("garbage") != 0) return 19;
 
-            // cascade layout (skipped until installed): parent carries ExtendedSubCommandsKey
-            // + Player, the Copy leaf has a command, paste is a flat empty-space verb only,
-            // and the retired flat verbs are gone
+            // concurrent "ask first": two workers on conflicting files must prompt once
+            string askDir = Path.Combine(Path.GetTempPath(), "sc_selftest_ask");
+            try
+            {
+                Directory.CreateDirectory(askDir);
+                string s1 = Path.Combine(askDir, "s1.txt"), s2 = Path.Combine(askDir, "s2.txt");
+                string d1 = Path.Combine(askDir, "d1.txt"), d2 = Path.Combine(askDir, "d2.txt");
+                File.WriteAllText(s1, "one"); File.WriteAllText(s2, "two");
+                File.WriteAllText(d1, "old"); File.WriteAllText(d2, "old");
+                int oldConflict = Settings.Conflict;
+                int asks = 0;
+                Settings.Conflict = 4;
+                Settings.AskSession = -1;
+                Settings.AskPrompting = 0;
+                ConflictPrompt.Ask = delegate(string a, string b)
+                {
+                    Interlocked.Increment(ref asks);
+                    Thread.Sleep(300);   // give the second worker time to reach the prompt
+                    return 0;            // overwrite
+                };
+                CopyJob aj = new CopyJob(new List<string>(new string[] { s1 }), askDir, false);
+                CopyItem i1 = new CopyItem(); i1.Src = s1; i1.Dst = d1; i1.Name = "d1.txt"; i1.Size = 3;
+                CopyItem i2 = new CopyItem(); i2.Src = s2; i2.Dst = d2; i2.Name = "d2.txt"; i2.Size = 3;
+                Thread w1 = new Thread(new ThreadStart(delegate { aj.DoCopy(i1, new byte[4096]); }));
+                Thread w2 = new Thread(new ThreadStart(delegate { aj.DoCopy(i2, new byte[4096]); }));
+                w1.Start(); w2.Start();
+                w1.Join(); w2.Join();
+                if (asks != 1) return 20;
+                if (Settings.AskSession != 0 || i1.State != 2 || i2.State != 2) return 20;
+                Settings.Conflict = oldConflict;
+                Settings.AskSession = -1;
+                ConflictPrompt.Ask = null;
+            }
+            finally
+            {
+                ConflictPrompt.Ask = null;
+                Settings.AskSession = -1;
+                try { Directory.Delete(askDir, true); } catch { }
+            }
+
+            // local version compare (offline update check: running exe vs %APPDATA% copy)
+            if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
+            if (Updates.FileVer(Path.Combine(Path.GetTempPath(), "sc_no_such_file.exe")) != 0) return 21;
+
+            // flat verb layout (skipped until installed): SuperCopy/SuperCut/SuperToDevice
+            // are top-level Player verbs with their own command, no cascade anywhere,
+            // paste is a flat empty-space verb only, and the retired keys are gone
             using (RegistryKey pk = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy"))
             {
                 if (pk != null)
                 {
-                    if (pk.GetValue("ExtendedSubCommandsKey") == null) return 12;
+                    if (pk.GetValue("ExtendedSubCommandsKey") != null) return 12;   // cascade must stay gone
                     if (!"Player".Equals(pk.GetValue("MultiSelectModel"))) return 13;
-                    using (RegistryKey lk = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy\shell\Copy\command"))
+                    using (RegistryKey lk = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCopy\command"))
                         if (lk == null || lk.GetValue("") == null) return 14;
                     using (RegistryKey old = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCut"))
-                        if (old != null) return 15;
+                    {
+                        if (old == null || old.GetValue("ExtendedSubCommandsKey") != null) return 15;
+                        using (RegistryKey oc = Registry.CurrentUser.OpenSubKey(@"Software\Classes\*\shell\SuperCut\command"))
+                            if (oc == null || oc.GetValue("") == null) return 15;
+                    }
                     using (RegistryKey bg = Registry.CurrentUser.OpenSubKey(@"Software\Classes\Directory\Background\shell\SuperPaste"))
                     {
                         if (bg == null) return 16;
@@ -1341,7 +1427,7 @@ namespace SuperCopyApp
                     using (RegistryKey bgold = Registry.CurrentUser.OpenSubKey(@"Software\Classes\Directory\Background\shell\SuperCopy"))
                         if (bgold != null) return 17;   // retired empty-space cascade
                     using (RegistryKey dr = Registry.CurrentUser.OpenSubKey(@"Software\Classes\Drive\shell\SuperCopy"))
-                        if (dr != null) return 17;      // drive no longer has a Super Copy submenu
+                        if (dr != null) return 17;      // drive has no Super Copy entry
                 }
             }
             return 0;
@@ -1508,13 +1594,29 @@ namespace SuperCopyApp
                     if (c == 4)
                     {
                         int askChoice = Settings.AskSession;
-                        if (askChoice < 0)
+                        while (askChoice < 0)
                         {
-                            ConflictAsker ask = ConflictPrompt.Ask;
-                            askChoice = ask == null ? 1 : ask(src, dst);
-                            if (askChoice < 0) { Skip(it); return; }     // dialog cancelled -> skip
-                            Settings.AskSession = askChoice;
+                            if (Interlocked.CompareExchange(ref Settings.AskPrompting, 1, 0) == 0)
+                            {
+                                try
+                                {
+                                    // the modal dialog pumps Invoke calls from the other workers,
+                                    // so only the CAS winner may ask; the rest wait and reuse the answer
+                                    askChoice = Settings.AskSession;   // re-check: winner may have answered while we waited
+                                    if (askChoice < 0)
+                                    {
+                                        ConflictAsker ask = ConflictPrompt.Ask;
+                                        askChoice = ask == null ? 1 : ask(src, dst);
+                                        if (askChoice >= 0) Settings.AskSession = askChoice;
+                                    }
+                                }
+                                finally { Interlocked.Exchange(ref Settings.AskPrompting, 0); }
+                                break;   // answered (session applies) or cancelled (-1: skip this file)
+                            }
+                            Thread.Sleep(50);
+                            askChoice = Settings.AskSession;
                         }
+                        if (askChoice < 0) { Skip(it); return; }     // dialog cancelled -> skip
                         c = askChoice;
                     }
                     if (c == 1) { Skip(it); return; }
@@ -1828,6 +1930,7 @@ namespace SuperCopyApp
     {
         readonly List<CopyJob> jobs = new List<CopyJob>();
         CopyJob cur, running;
+        string lastDest;   // most recent job's folder: drop menu offers it as "same destination"
         HeaderPanel header;
         BufferedListView lv;
         ListBox jobBox;
@@ -2012,15 +2115,32 @@ namespace SuperCopyApp
             catch { }
             if (paths == null || paths.Length == 0) return;
 
-            // seeded with the current folder: OK = same path, browse = new path
+            // two options: same destination (last job's folder) / another (browse)
+            if (lastDest == null)
+            {
+                PickDropDest(paths, null);   // first job ever: only the browse dialog
+                return;
+            }
+            ContextMenu cm = new ContextMenu();
+            string same = lastDest;
+            string shortDest = same.Length > 40 ? "..." + same.Substring(same.Length - 37) : same;
+            MenuItem mSame = new MenuItem("1. Same destination (" + shortDest + ")");
+            mSame.Click += delegate { cm.Dispose(); AddJob(new CopyJob(new List<string>(paths), same, false)); };
+            MenuItem mOther = new MenuItem("2. Another destination...");
+            mOther.Click += delegate { cm.Dispose(); PickDropDest(paths, same); };
+            cm.MenuItems.Add(mSame);
+            cm.MenuItems.Add(mOther);
+            cm.Show(this, PointToClient(Cursor.Position));
+        }
+
+        // shortcut: always copies (Move=false), no dedup vs existing sources, and a dropped path may equal/contain Dest; upgrade if these matter
+        void PickDropDest(string[] paths, string seed)
+        {
             using (FolderBrowserDialog fb = new FolderBrowserDialog())
             {
-                fb.Description = running == null
-                    ? "Destination folder for the dropped items"
-                    : "Destination - press OK for the current folder, or pick another";
-                if (running != null) fb.SelectedPath = running.Dest;
+                fb.Description = "Destination folder for the dropped items";
+                if (seed != null) fb.SelectedPath = seed;
                 if (fb.ShowDialog(this) != DialogResult.OK) return;
-                // shortcut: always copies (Move=false), no dedup vs existing sources, and a dropped path may equal/contain Dest; upgrade if these matter
                 AddJob(new CopyJob(new List<string>(paths), fb.SelectedPath, false));
             }
         }
@@ -2054,6 +2174,7 @@ namespace SuperCopyApp
         void AddJob(CopyJob j)
         {
             jobs.Add(j);
+            lastDest = j.Dest;
             jobBox.Items.Add(j);
             doneHandled = false;
             closeAt = -1;
@@ -2636,6 +2757,7 @@ namespace SuperCopyApp
         ComboBox cmbBuf, cmbConf, cmbEngine;
         CheckBox chkClose;
         Label lblState;
+        bool startupChecked;   // startup install/update suggestion runs once per window
         static readonly int[] BufSizes = new int[] { 64, 256, 1024, 4096 };
 
         Label MakeLabel(string text, int x, int y, Color c)
@@ -2758,6 +2880,47 @@ namespace SuperCopyApp
             Controls.Add(reset);
             AcceptButton = ok;
             CancelButton = cancel;
+            Shown += new EventHandler(OnShownOnce);
+        }
+
+        // on open: installed = SuperCopy.exe present in %APPDATA%\SuperCopy;
+        // offer to install it when missing, and to update when not the latest version
+        void OnShownOnce(object s, EventArgs e)
+        {
+            if (startupChecked) return;
+            startupChecked = true;
+            if (!File.Exists(Paths.ExeInstalled))
+            {
+                if (MessageBox.Show(this,
+                    "Super Copy is not installed (missing %APPDATA%\\SuperCopy\\SuperCopy.exe).\n\nInstall now?",
+                    "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    OnInstall(this, EventArgs.Empty);   // copies the exe into %APPDATA% + installs the menu
+                }
+            }
+            else
+            {
+                Updates.CheckLocal(this);   // offline: newer running exe than the installed one -> ask
+            }
+            Thread th = new Thread(new ThreadStart(StartupUpdateCheck));
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        // GitHub check off the UI thread (5 s timeout, silent when offline)
+        void StartupUpdateCheck()
+        {
+            try
+            {
+                int latest = Updates.GetLatest();
+                if (latest <= Updates.Current) return;
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new EventHandler(delegate(object bs, EventArgs ea)
+                {
+                    if (!IsDisposed) Updates.OfferUpdate(this, latest);
+                }));
+            }
+            catch { }
         }
 
         void RefreshState()
@@ -2776,7 +2939,7 @@ namespace SuperCopyApp
             {
                 ShellIntegration.Install();
                 RefreshState();
-                MessageBox.Show(this, "Done.\n\n1. Right-click files/folders > Super Copy > Super Copy (or Super Cut (move))\n2. Right-click a folder or drive > Super Copy > Super Paste here\n3. Right-click empty space inside a folder > Super Paste here",
+                MessageBox.Show(this, "Done.\n\n1. Right-click files/folders > Super Copy / Super Cut (move) / Copy to dest...\n2. Right-click empty space inside a folder > Super Paste here",
                     "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
