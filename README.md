@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Super Copy
 
 Lightweight multi-threaded file copier for Windows XP .. 11 (.NET Framework 2.0, single-file executable built with `csc.exe`).
@@ -74,3 +75,6 @@ Stored in `%APPDATA%\SuperCopy\settings.ini`
 ## License
 
 MIT
+=======
+# super-copy
+>>>>>>> origin/main
