@@ -139,9 +139,9 @@ build.cmd
 
 <div align="center">
 
-| Main window | Settings |
-|:---:|:---:|
-| ![Main window](sc2.png) | ![Settings](sc1.png) |
+| Main window | Compact mode | Settings |
+|:---:|:---:|:---:|
+| ![Main window](sc2.png) | ![Compact mode](sc3.png) | ![Settings](sc1.png) |
 
 </div>
 
