@@ -1,0 +1,35 @@
+# Tasks
+
+- [x] Structure pass (no behavior change): add file-header Contents TOC; add banners for QueueStore + ShellIntegration; fix misplaced "Explorer context menu" banner; reorder nothing
+- [x] Build OK + `/copy`→`/paste` smoke test after structure pass
+- [x] Compact mode: toggle + `settings.ini` persistence (load/save/apply on start)
+- [x] Remove Golden theme: single Default palette, drop `Theme=` persistence + Settings combo
+- [x] "Ask first" conflict option (value 4): `Settings.AskSession`, `ConflictAsker`/`ConflictPrompt`, `DoCopy` branch, Settings combo, `ConflictDialog` + `MainForm` wiring
+- [x] Concurrency range 1–8 → 1–32 (Settings clamp, `CopyJob.Start`, `EnsureWorkers` already dynamic)
+- [x] Robocopy engine option: `Settings.Engine` (0 built-in / 1 robocopy), `Load`/`Save`, Settings combo, `DoCopy` dispatch, `CopyJob.RoboCopy` + built-in fallback
+- [x] Build OK; refresh `%APPDATA%\SuperCopy\SuperCopy.exe`
+- [x] E2E: `Engine=1` copies correctly; keep-both forces built-in fallback (`a (2).bin`); no lingering process; `settings.ini` restored
+- [x] Safety fixes: A queue delete-after-enqueue; B atomic `settings.ini`/`cliplist` writes; C overwrite/move backup+restore; D same-drive move `File.Replace`
+- [x] Feature #2: Error report button (shows on failure) + popup + copy-to-clipboard
+- [x] Feature #2 self-check: `/selftest` → `CopyJob.SelfTest()` exit 0
+- [x] build.cmd: pass `/langversion:ISO-2` only to v3.5+/v4.0 (v2.0 csc rejects it); builds green with v2.0.50727
+- [x] Fixes C/D smoke test: overwrite + move-overwrite pass for `Engine=0` and `Engine=1`; no `.sctmp` leftovers; `settings.ini` restored
+- [x] Feature #3: "Copy to dest..." — static menu verb (`*` + Directory) → `/todevice` → clip (`clipboard.device.txt`) → destination folder picker → `MainForm`
+- [x] Feature #3 self-check: `/selftest` extended with device-clip isolation asserts (exit 0)
+- [x] Settings window: "Reset to default" button (fills defaults; Save persists)
+- [x] EXE icon: `SuperCopy.ico` (32x32) committed to repo + `/win32icon` in `build.cmd`; icon embedded in build EXE and installed copy
+- [x] Safety: destination free-space check before copying (`FreeSpace`, `spaceLimit` in `ScanMain`, per-file guard in `AddFile` → abort with "Not enough free space…")
+- [x] Safety: MD5-verify copy before deleting source on Move (`HashFile`/`SameHash`, guard before `File.Delete(src)` in `DoCopy`)
+- [x] Safety self-check: `/selftest` extended (exit codes 6–9: hash match/mismatch + free-space); build green; E2E move-verify passes (src removed, dst intact)
+- [x] Big-first ordering: `ScanMain` `finally` sorts `items` by `Size` descending (re-indexes `Index`); `WorkerMain` gate changed to wait for `ScanDone` so workers consume the post-sort list
+- [x] Ordering self-check: `/selftest` extended (exit 10: scan leaves items sorted by `Size` descending); build green; headless `/copy`+`/paste` E2E passes (files intact, workers released, no hang)
+- [x] >15-item shell-menu fix: `MultiSelectModel="Player"` on each cascade parent + every leaf verb (`*`/`Directory`/`Drive`) and Background `SuperPaste`; legacy Document's 15-item cap raised to 100 (legacy Player still invokes once per file, so the `ClipStore` merge design is unchanged) [cascade later replaced — see below]
+- [x] Drag & drop: drop files/folders on the window (`this` + `lv`/`header`/`bottom`/`jobBox`) → `FolderBrowserDialog` (pre-seeded with the running job's dest: OK = same path, navigate = new path) → new queued `CopyJob`
+- [x] Drag-drop self-check: `/selftest` exit 11 (FileDrop `DataObject` round-trip, works headless)
+- [x] Install/verify: build OK; installed exe refreshed; `/install`; `reg query` confirms `MultiSelectModel=Player` on all parents + leaves; installed `/selftest` exit 0
+- [x] Multi-select "Super Copy" bug (multi-file selection ran the file's default verb → "This file does not have an app associated…"): replaced the `ExtendedSubCommandsKey` cascade with **flat top-level verbs**, each with its own `command` — `SuperCopy`/`SuperCut`/`SuperToDevice` on `*`+`Directory`, `SuperPaste` on `Directory`+`Drive`, Background `SuperPaste`; `Cascade`→`Verb`, `IsInstalled` checks `*\shell\SuperCopy\command`, `OldKeys` retires stale cascade child subkeys; every verb keeps `MultiSelectModel="Player"`
+- [x] Flat-verb verify: build OK (`v2.0.50727`); `/selftest` exit 0; installed exe refreshed (SHA-256 `90208DAB…`); `/install`; `reg query` (both views) shows all flat verbs with `command`, no `ExtendedSubCommandsKey`, `Drive\shell\SuperCopy` gone, no stale `\shell` children
+- [x] Shell submenu: copy/cut/copy-to-dest under one `Super Copy >` cascade (`*\shell\SuperCopy`, `Directory\shell\SuperCopy`); `ExtendedSubCommandsKey` + `MultiSelectModel=Player` on parent and leaves
+- [x] Super Paste is **outside** the submenu and empty-space only: flat verb `Directory\Background\shell\SuperPaste` → `/paste "%V"`; removed from the folder submenu and from the drive root (no `Drive\shell\SuperCopy` at all)
+- [x] Multi-select root cause fixed: the old cascade parents had no `MultiSelectModel`, so the default Document model dropped the submenu and Explorer ran the selection's default verb; `Player` keeps the cascade
+- [x] Cascade verify: build OK (`v2.0.50727`); `/selftest` exit 0 for build **and** installed exe (exit 12–17 guards: `ExtendedSubCommandsKey`, `Player`, leaf command, paste flat + no submenu, retired keys gone); `/install`; `reg query` (both views) confirms the tree; installed exe refreshed to SHA-256 `9B52B540…`
