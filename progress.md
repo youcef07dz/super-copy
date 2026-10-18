@@ -10,6 +10,11 @@
 
 ## Latest (this session)
 
+- Access denied: jobs flag `AccessDenied` (UnauthorizedAccessException in scan/copy/move-delete); on finish `MainForm` asks once "Retry the failed items as administrator?" → re-queues failed items (`QueueStore`) → `Admin.Relaunch()` UAC `runas` into new `/queue` mode (`MainForm(null)`, jobs arrive via `PollQueue`; `retryEscalated` stops the old instance stealing its own queue file). `/selftest` exit 18.
+- Update check v1: `Updates.Current=1`; repo root `update.txt` holds the latest version number (`1`); Settings shows "Version 1" + "Check for updates" button → raw GitHub `update.txt` → if newer, prompt → download `SuperCopy.exe` to `%TEMP%` → hidden `ping`-delayed `.cmd` copies over the running exe and relaunches (`Application.Exit` first). TLS 1.2 forced for GitHub. `/selftest` exit 19.
+- Verified: build OK (`v2.0.50727`), `/selftest` exit 0.
+- Limits: `update.txt`/EXE URLs hard-coded to `youcef07dz/super-copy` `main`; XP/.NET2 TLS may fail against GitHub (error shown, no crash); a copy job kept running via the exit-tray prompt makes the swap silently fail and the old exe restarts (`shortcut:` in code); pushed `SuperCopy.exe` must be rebuilt before push or users get the old binary.
+
 - Branch: `main` tracks `origin/master`, HEAD `0f2b5b0`, working tree clean; no push unless user requests.
 - Explorer menu: copy actions under one cascaded `Super Copy >` on files and folders (`*\shell\SuperCopy`, `Directory\shell\SuperCopy`) — Copy, Cut (move), Copy to dest…, built by `ShellIntegration.Cascade` (`ExtendedSubCommandsKey` → the parent's own `shell` subkey, `MUIVerb="Super Copy"`, empty parent default).
 - Super Paste is **outside** the submenu and empty-space only: flat verb `Directory\Background\shell\SuperPaste` → `/paste "%V"` (`Verb` helper). Removed from the folder submenu and from the drive root (`Drive\shell\SuperCopy` gone entirely); `Directory\Background\shell\SuperCopy` retired.
