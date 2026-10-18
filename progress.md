@@ -10,6 +10,10 @@
 
 ## Latest (this session)
 
+- Optional installer (`Installer`, `SuperCopy.cs`): `/setup` copies the exe to `%ProgramFiles%\SuperCopy` (elevates via `Admin.Relaunch("/setup")`), registers the Explorer menu pointing at that exe, creates a desktop shortcut (WScript.Shell COM) and an `HKLM\...\Uninstall\SuperCopy` "Apps & features" entry; `/uninstall` removes menu + shortcut + entry + files (in-use exe deleted on reboot via `MoveFileEx`). Settings: "Install app..." button; startup prompt now installs there.
+- Menu install no longer copies the exe into `%APPDATA%` (`ShellIntegration.Install(exe)` registers the exe path; icon = `exe,0`); removed `IconMaker.WriteIco`/`Paths.IcoFile`. Portable `/install` (per-user, no admin) is unchanged.
+- Verified: build (v2.0.50727) + `/selftest` exit 0.
+
 - About button in Settings (`OnAbout`): modal with name/version, description, exe build time, repo URL. Added `sc3.png` (compact UI) to the README Screenshots table.
 - AV false positives (Arctic Wolf/McAfee/SecureAge flagged the exe): removed the download-and-swap update path (the dropper pattern). `Updates.OfferUpdate` now opens the GitHub releases page in the browser; `ExeUrl`, `ApplyAndRestart`, `DelayedCopy` deleted; `CheckLocal` does a direct `File.Copy` only (error asks the user to close the other window). Added publisher metadata (`AssemblyCompany`/`Product`/`Copyright`). Build + `/selftest` exit 0.
 - Still to do: Authenticode signing needs a real cert (self-signed does not help AV reputation).

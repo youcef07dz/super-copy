@@ -64,6 +64,7 @@ with seamless Explorer right-click integration
 
 > [!TIP]
 > No admin rights required — the menu is installed per-user in `HKEY_CURRENT_USER`.
+> Prefer a normal install (Program Files, desktop shortcut, uninstall entry)? Use *Install app...* in Settings or `SuperCopy.exe /setup` (asks for admin).
 
 ---
 
@@ -92,8 +93,9 @@ with seamless Explorer right-click integration
 | Command | Action |
 |---|---|
 | `SuperCopy.exe` | Open Settings |
-| `SuperCopy.exe /install` | Add Explorer right-click entries |
-| `SuperCopy.exe /uninstall` | Remove Explorer right-click entries |
+| `SuperCopy.exe /install` | Add Explorer right-click entries (per-user, no admin) |
+| `SuperCopy.exe /setup` | Install to Program Files + desktop shortcut + uninstall entry (needs admin) |
+| `SuperCopy.exe /uninstall` | Uninstall the app (files, menu, shortcut, entry) |
 | `SuperCopy.exe /copy <paths...>` | Remember items to copy |
 | `SuperCopy.exe /cut <paths...>` | Remember items to move |
 | `SuperCopy.exe /paste <folder>` | Copy/move remembered items here |
@@ -103,8 +105,11 @@ with seamless Explorer right-click integration
 ### Examples
 
 ```bash
-# Install Explorer context menu entries
+# Install Explorer context menu entries (portable, no admin)
 SuperCopy.exe /install
+
+# Optional: full install to Program Files (admin) with desktop shortcut
+SuperCopy.exe /setup
 
 # Remember files/folders for copying
 SuperCopy.exe /copy "C:\Folder\file1.txt" "D:\Photos\image.jpg"

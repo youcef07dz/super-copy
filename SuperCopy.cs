@@ -4,8 +4,9 @@
 //
 //  Modes (command line):
 //    SuperCopy.exe                    open Settings (install / remove menu)
-//    SuperCopy.exe /install           add Explorer right-click entries
-//    SuperCopy.exe /uninstall         remove them
+//    SuperCopy.exe /install           add Explorer right-click entries (per-user, no admin)
+//    SuperCopy.exe /uninstall         uninstall the app (files, menu, shortcut, entry)
+//    SuperCopy.exe /setup             install the app to Program Files (elevates)
 //    SuperCopy.exe /copy <paths...>   remember items (silent)
 //    SuperCopy.exe /cut  <paths...>   remember items for a move (silent)
 //    SuperCopy.exe /paste <folder>    copy/move remembered items here
@@ -21,6 +22,7 @@
 //    Admin ........... UAC elevation (retry access-denied jobs as administrator)
 //    Updates ......... manual update check against GitHub (update.txt)
 //    ShellIntegration  Explorer right-click menu install/remove
+//    Installer ....... optional Program Files install / uninstall
 //    Theme/Fmt/Gfx/IconMaker  colours, drawing helpers, tray icon
 //    CopyItem/CopyJob  copy engine (scan, workers, DoCopy/CopyData/RoboCopy)
 //    BufferedListView/HeaderPanel/TitleBar/UI  small UI controls
@@ -38,6 +40,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -103,12 +106,14 @@ namespace SuperCopyApp
                         Application.Run(new MainForm(null));   // PollQueue feeds it the queued retry jobs
                         return 0;
                     case "/install":
-                        ShellIntegration.Install();
+                        ShellIntegration.Install(Application.ExecutablePath);
                         MessageBox.Show("Explorer menu installed.", "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     case "/uninstall":
-                        ShellIntegration.Uninstall();
-                        MessageBox.Show("Explorer menu removed.", "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Installer.Uninstall();
+                        return 0;
+                    case "/setup":
+                        Installer.Install();
                         return 0;
                     default:
                         Application.Run(new SettingsForm());
@@ -219,7 +224,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Paths
     {
-        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, IcoFile, ExeInstalled;
+        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, InstallDir, ExeInstalled;
 
         public static void Init()
         {
@@ -230,8 +235,8 @@ namespace SuperCopyApp
             ClipDevice = Path.Combine(AppDir, "clipboard.device.txt"); // separate so it never clobbers a pending /copy
             QueueDir = Path.Combine(AppDir, "queue");
             Ini = Path.Combine(AppDir, "settings.ini");
-            IcoFile = Path.Combine(AppDir, "SuperCopy.ico");
-            ExeInstalled = Path.Combine(AppDir, "SuperCopy.exe");
+            InstallDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SuperCopy");
+            ExeInstalled = Path.Combine(InstallDir, "SuperCopy.exe");
             try { Directory.CreateDirectory(QueueDir); } catch { }
         }
 
@@ -454,11 +459,13 @@ namespace SuperCopyApp
         }
 
         // starts a second elevated instance (/queue runs the hand-off queue); false when UAC is declined
-        public static bool Relaunch()
+        public static bool Relaunch() { return Relaunch("/queue"); }
+
+        public static bool Relaunch(string args)
         {
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo(Application.ExecutablePath, "/queue");
+                ProcessStartInfo psi = new ProcessStartInfo(Application.ExecutablePath, args);
                 psi.UseShellExecute = true;     // Verb=runas needs the shell
                 psi.Verb = "runas";
                 Process.Start(psi);
@@ -515,7 +522,7 @@ namespace SuperCopyApp
         }
 
         // offline update check: compare the running exe with the installed copy
-        // in %APPDATA% (no internet needed); newer running copy = offer a direct copy
+        // in Program Files (no internet needed); newer running copy = offer a direct copy
         public static void CheckLocal(Form owner)
         {
             try
@@ -653,23 +660,14 @@ namespace SuperCopyApp
             catch { return false; }
         }
 
-        public static void Install()
+        // registers the menu verbs to point at "exe": the running exe for a portable
+        // run, or the Program Files copy when installed (no self-copy into %APPDATA%)
+        public static void Install(string exe)
         {
-            string self = Application.ExecutablePath;
-            string exe = Paths.ExeInstalled;
-            // keep a stable copy so the menu keeps working if the build folder is deleted
-            if (!string.Equals(Path.GetFullPath(self), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase))
-            {
-                try { File.Copy(self, exe, true); }
-                catch { if (!File.Exists(exe)) exe = self; }
-            }
-            string ico = Paths.IcoFile;
-            try { IconMaker.WriteIco(ico); } catch { ico = exe + ",0"; }
-
+            string q = "\"" + exe + "\"";
+            string ico = "\"" + exe + "\",0";   // the icon is embedded in the exe
             using (RegistryKey cls = Registry.CurrentUser.CreateSubKey(@"Software\Classes"))
             {
-                string q = "\"" + exe + "\"";
-                // shared view: read by both 32-bit and 64-bit Explorer
                 DeleteAll(cls, AllKeys, false);   // wipe previous trees; AddVerbs recreates them
                 DeleteAll(cls, OldKeys, false);   // drop retired flat entries and leftovers
                 AddVerbs(cls, false, ico, q);
@@ -724,6 +722,125 @@ namespace SuperCopyApp
         static void Notify()
         {
             try { SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); } catch { }
+        }
+    }
+
+    // ================================================================
+    //  Optional installer: copy the exe to Program Files, add a desktop
+    //  shortcut and an "Apps & features" entry. /setup installs (elevates),
+    //  /uninstall removes everything.
+    // ================================================================
+    static class Installer
+    {
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool MoveFileEx(string existing, string newName, int flags);
+        const int DelayUntilReboot = 0x4;
+
+        const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SuperCopy";
+
+        static string ShortcutPath
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                                    "Super Copy.lnk");
+            }
+        }
+
+        public static void Install()
+        {
+            if (!Admin.IsElevated)
+            {
+                if (Admin.Relaunch("/setup")) return;   // the elevated instance finishes the install
+                MessageBox.Show("Installing to " + Paths.InstallDir + " needs administrator rights.",
+                    "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            try
+            {
+                Directory.CreateDirectory(Paths.InstallDir);
+                if (!string.Equals(Path.GetFullPath(Application.ExecutablePath), Path.GetFullPath(Paths.ExeInstalled), StringComparison.OrdinalIgnoreCase))
+                    File.Copy(Application.ExecutablePath, Paths.ExeInstalled, true);
+                ShellIntegration.Install(Paths.ExeInstalled);
+                MakeShortcut(ShortcutPath, Paths.ExeInstalled);
+                using (RegistryKey k = Registry.LocalMachine.CreateSubKey(UninstallKey))
+                {
+                    k.SetValue("DisplayName", "Super Copy");
+                    k.SetValue("DisplayVersion", Updates.Current + ".0");
+                    k.SetValue("Publisher", "youcef07dz");
+                    k.SetValue("DisplayIcon", Paths.ExeInstalled + ",0");
+                    k.SetValue("InstallLocation", Paths.InstallDir);
+                    k.SetValue("UninstallString", "\"" + Paths.ExeInstalled + "\" /uninstall");
+                    k.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                    k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                }
+                MessageBox.Show("Super Copy installed to:\n" + Paths.InstallDir +
+                    "\n\nA desktop shortcut and an uninstall entry were created.",
+                    "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Install failed:\n" + ex.Message, "Super Copy",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        public static void Uninstall()
+        {
+            bool installed = File.Exists(Paths.ExeInstalled);
+            if (installed && !Admin.IsElevated && Admin.Relaunch("/uninstall")) return;
+            try
+            {
+                ShellIntegration.Uninstall();
+                try { File.Delete(ShortcutPath); } catch { }
+                try { Registry.LocalMachine.DeleteSubKeyTree(UninstallKey); } catch { }
+                bool inUse = false;
+                try
+                {
+                    string[] fs = Directory.GetFiles(Paths.InstallDir);
+                    for (int i = 0; i < fs.Length; i++)
+                    {
+                        try { File.Delete(fs[i]); }
+                        catch { inUse = true; MoveFileEx(fs[i], null, DelayUntilReboot); }
+                    }
+                    try { Directory.Delete(Paths.InstallDir, true); } catch { }
+                }
+                catch { }
+                MessageBox.Show(inUse
+                    ? "Super Copy was uninstalled. The program folder is removed after the next restart."
+                    : "Super Copy was uninstalled.",
+                    "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Uninstall failed:\n" + ex.Message, "Super Copy",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // desktop .lnk via the WScript.Shell COM object (XP..11)
+        static void MakeShortcut(string lnk, string target)
+        {
+            object sh = null, sc = null;
+            try
+            {
+                Type t = Type.GetTypeFromProgID("WScript.Shell");
+                if (t == null) return;
+                sh = Activator.CreateInstance(t);
+                sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
+                Type st = sc.GetType();
+                st.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { target });
+                st.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Path.GetDirectoryName(target) });
+                st.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { target + ",0" });
+                st.InvokeMember("Description", BindingFlags.SetProperty, null, sc, new object[] { "Super Copy" });
+                st.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
+            }
+            catch { }
+            finally
+            {
+                if (sc != null) { try { Marshal.ReleaseComObject(sc); } catch { } }
+                if (sh != null) { try { Marshal.ReleaseComObject(sh); } catch { } }
+            }
         }
     }
 
@@ -899,31 +1016,6 @@ namespace SuperCopyApp
         {
             using (Bitmap b = MakeBitmap(32))
                 return Icon.FromHandle(b.GetHicon());
-        }
-
-        // writes a classic 32x32 32-bit .ico (works on XP too)
-        public static void WriteIco(string path)
-        {
-            const int s = 32;
-            using (Bitmap bmp = MakeBitmap(s))
-            using (FileStream fs = new FileStream(path, FileMode.Create))
-            using (BinaryWriter w = new BinaryWriter(fs))
-            {
-                int maskRow = ((s + 31) / 32) * 4;
-                int imgSize = 40 + s * s * 4 + maskRow * s;
-                w.Write((short)0); w.Write((short)1); w.Write((short)1);                 // ICONDIR
-                w.Write((byte)s); w.Write((byte)s); w.Write((byte)0); w.Write((byte)0);  // ICONDIRENTRY
-                w.Write((short)1); w.Write((short)32); w.Write(imgSize); w.Write(22);
-                w.Write(40); w.Write(s); w.Write(s * 2); w.Write((short)1); w.Write((short)32);  // BITMAPINFOHEADER
-                w.Write(0); w.Write(s * s * 4); w.Write(0); w.Write(0); w.Write(0); w.Write(0);
-                for (int y = s - 1; y >= 0; y--)
-                    for (int x = 0; x < s; x++)
-                    {
-                        Color c = bmp.GetPixel(x, y);
-                        w.Write(c.B); w.Write(c.G); w.Write(c.R); w.Write(c.A);
-                    }
-                for (int i = 0; i < maskRow * s; i++) w.Write((byte)0);
-            }
         }
     }
 
@@ -1385,7 +1477,7 @@ namespace SuperCopyApp
                 try { Directory.Delete(askDir, true); } catch { }
             }
 
-            // local version compare (offline update check: running exe vs %APPDATA% copy)
+            // local version compare (offline update check: running exe vs Program Files copy)
             if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
             if (Updates.FileVer(Path.Combine(Path.GetTempPath(), "sc_no_such_file.exe")) != 0) return 21;
 
@@ -2836,14 +2928,18 @@ namespace SuperCopyApp
             Controls.Add(chkClose);
 
             Controls.Add(MakeLabel("Explorer right-click menu", 20, 300, Theme.Cyan));
-            Button bi2 = UI.MakeButton("Install menu", 180, Color.FromArgb(40, 150, 100));
-            Button br = UI.MakeButton("Remove menu", 180, Color.FromArgb(190, 60, 80));
+            Button bi2 = UI.MakeButton("Install menu", 120, Color.FromArgb(40, 150, 100));
+            Button br = UI.MakeButton("Remove menu", 120, Color.FromArgb(190, 60, 80));
+            Button bapp = UI.MakeButton("Install app...", 150, Color.FromArgb(60, 110, 170));
             bi2.Location = new Point(20, 322);
-            br.Location = new Point(220, 322);
+            br.Location = new Point(146, 322);
+            bapp.Location = new Point(272, 322);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
+            bapp.Click += new EventHandler(OnInstallApp);
             Controls.Add(bi2);
             Controls.Add(br);
+            Controls.Add(bapp);
             lblState = MakeLabel("", 20, 360, Theme.Dim);
             Controls.Add(lblState);
             Controls.Add(MakeLabel("Windows 11: entries are under \"Show more options\" (Shift+F10).", 20, 380, Theme.Dim));
@@ -2876,7 +2972,7 @@ namespace SuperCopyApp
             Shown += new EventHandler(OnShownOnce);
         }
 
-        // on open: installed = SuperCopy.exe present in %APPDATA%\SuperCopy;
+        // on open: installed = SuperCopy.exe present in Program Files\SuperCopy;
         // offer to install it when missing, and to update when not the latest version
         void OnShownOnce(object s, EventArgs e)
         {
@@ -2885,10 +2981,11 @@ namespace SuperCopyApp
             if (!File.Exists(Paths.ExeInstalled))
             {
                 if (MessageBox.Show(this,
-                    "Super Copy is not installed (missing %APPDATA%\\SuperCopy\\SuperCopy.exe).\n\nInstall now?",
+                    "Super Copy is not installed.\n\nInstall it to\n" + Paths.InstallDir +
+                    "\n\n(needs administrator rights; adds a desktop shortcut and an uninstall entry)",
                     "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
-                    OnInstall(this, EventArgs.Empty);   // copies the exe into %APPDATA% + installs the menu
+                    OnInstallApp(this, EventArgs.Empty);
                 }
             }
             else
@@ -2930,12 +3027,19 @@ namespace SuperCopyApp
         {
             try
             {
-                ShellIntegration.Install();
+                ShellIntegration.Install(Application.ExecutablePath);
                 RefreshState();
                 MessageBox.Show(this, "Done.\n\n1. Right-click files/folders > Super Copy / Super Cut (move) / Copy to dest...\n2. Right-click empty space inside a folder > Super Paste here",
                     "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        // full install to Program Files (elevates; the elevated instance shows the result)
+        void OnInstallApp(object s, EventArgs e)
+        {
+            Installer.Install();
+            RefreshState();
         }
 
         void OnRemove(object s, EventArgs e)

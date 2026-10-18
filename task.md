@@ -44,3 +44,4 @@
 - [x] Add publisher metadata (`AssemblyCompany`/`Product`/`Copyright`)
 - [x] Draft AV false-positive reports (McAfee/SecureAge/Arctic Wolf)
 - [ ] Code-sign the exe (needs a real Authenticode cert + signtool; self-signed does not help reputation)
+- [x] Optional installer: `Installer` (Program Files copy + desktop shortcut + HKLM "Apps & features" entry), `/setup` + `/uninstall` modes, `Admin.Relaunch(args)`, `ShellIntegration.Install(exe)` (menu points at the exe, no `%APPDATA%` self-copy), Settings "Install app..." button; removed `WriteIco`/`IcoFile`; build + `/selftest` green
