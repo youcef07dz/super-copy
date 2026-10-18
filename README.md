@@ -1,80 +1,59 @@
-<<<<<<< HEAD
-# Super Copy
+﻿# Super Copy
 
-Lightweight multi-threaded file copier for Windows XP .. 11 (.NET Framework 2.0, single-file executable built with `csc.exe`).
+Lightweight, multi-threaded file copier for Windows XP..11 with Explorer right-click integration.
+
+[**→ Download SuperCopy.exe**](SuperCopy.exe)
+
+## Quick Start
+
+- [Download SuperCopy.exe](SuperCopy.exe) — single portable .exe, no installer required.
+- Run SuperCopy.exe to open Settings.
+- Right-click files/folders → *Super Copy > Copy/Cut (move)/Copy to dest...*
+- Right-click empty space in a folder → *Super Paste here*
 
 ## Features
 
-- Smart concurrency: auto-adjusts concurrent file copies by file size (small files copy faster in parallel, large files in single stream)
-- Multi-selection support via Explorer right-click menu
-- Progress window with per-file bars, overall progress, speed and ETA
-- Queue multiple paste operations
-- Conflict resolution with "Ask first" that remembers your choice for the session
-- Optional Robocopy engine
-- Compact/header-only view, auto-close on finish, system tray support
-- No admin rights needed (uses `HKCU` for Explorer menu)
+- **Fast**: multi-threaded copying with smart concurrency (auto-tuned by file size)
+- **Explorer integration**: cascade menu (Copy, Cut (move), Copy to dest...) + *Super Paste here* on folder background
+- **Engines**: built-in or optional Windows Robocopy
+- **Conflicts**: Overwrite / Skip / Keep both (rename) / Overwrite if newer / Ask first
+- **Smart ordering**: big files first for better throughput
+- **Safety**: free-space check, move-verify (MD5) before deleting source
+- **Convenience**: drag & drop, compact mode, error report with copy-to-clipboard
+- **Screenshots**: in-app capture (copy to clipboard + optional auto-save)
+- **Portable + safe**: atomic I/O for settings/clipboard; uses HKCU for menu
 
 ## Download
 
-Grab the latest release from GitHub:  
-https://github.com/youcef07dz/super-copy/releases
+- **[Direct Download → SuperCopy.exe](SuperCopy.exe)**
 
-Or clone directly with git:
+## Command Line
 
-```bash
-git clone https://github.com/youcef07dz/super-copy.git
-```
+`	ext
+SuperCopy.exe                    Open Settings
+SuperCopy.exe /install           Add Explorer right-click entries
+SuperCopy.exe /uninstall         Remove Explorer right-click entries
+SuperCopy.exe /copy <paths...>   Remember items to copy
+SuperCopy.exe /cut  <paths...>   Remember items to move
+SuperCopy.exe /paste <folder>    Copy/move remembered items here
+SuperCopy.exe /todevice          Copy selected items to chosen folder
+SuperCopy.exe /selftest          Run self-check (exit 0 if OK)
+`
 
 ## Build
 
-1. Double-click `build.cmd` (uses `%WINDIR%\Microsoft.NET\Framework\v2.0.50727\csc.exe`)
-2. Output: `SuperCopy.exe` (single file, no dependencies)
+`at
+build.cmd
+`
 
-## Install Explorer Menu
-
-- Run `SuperCopy.exe` → "Install menu"  
-- Or: `SuperCopy.exe /install` / `SuperCopy.exe /uninstall`
-
-A stable copy is kept in `%APPDATA%\SuperCopy\`. Windows 11 shows entries under "Show more options" (Shift+F10).
-
-## Usage
-
-1. Right-click files/folders → `Super Copy` → `Super Copy` (or `Super Cut (move)`)
-2. Right-click empty space in destination folder → `Super Paste here`
-3. Watch progress (overall + per-file). Use `[Hide]` to send to tray.
-
-## Smart Concurrency
-
-When enabled (default), concurrency is chosen per file:
-
-- `< 500 KB` → up to 10 (tapers 10→5)
-- `500 KB – 100 MB` → tapers 5→1
-- `> 100 MB` → 1
-
-This matches your recommendation: more parallelism for small files, single stream for very large files.
-
-## Settings
-
-Open from the progress window or run `SuperCopy.exe`. Options include:
-
-- Smart concurrency (default) or fixed concurrent copies (1–32)
-- Buffer size per thread
-- Conflict behavior (overwrite/skip/keep both/overwrite if newer/ask first)
-- Copy engine (built-in/Robocopy)
-- Auto-close when finished
-
-Stored in `%APPDATA%\SuperCopy\settings.ini`
+Uses .NET Framework 2.0 csc.exe (built into Windows). Embeds SuperCopy.ico and outputs SuperCopy.exe to the repo root.
 
 ## Notes
 
-- Windows XP: no empty-background right-click in some cases — right-click the destination folder instead
-- Very large multi-selects can hit Windows menu limits on older versions
-- Same-drive "Super Cut" is instant rename; cross-drive copies then deletes
-- Self-test: `SuperCopy.exe /selftest` returns 0 on success
+- **Windows 11**: context menu entries appear under *Show more options* (Shift+F10).
+- **Settings**: stored in %APPDATA%\SuperCopy\settings.ini.
+- **Menu**: requires /install (or *Install menu* in Settings). No admin rights required.
 
 ## License
 
 MIT
-=======
-# super-copy
->>>>>>> origin/main
