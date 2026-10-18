@@ -10,8 +10,8 @@
 
 ## Latest (this session)
 
-- Optional installer (`Installer`, `SuperCopy.cs`): `/setup` copies the exe to `%ProgramFiles%\SuperCopy` (elevates via `Admin.Relaunch("/setup")`), registers the Explorer menu pointing at that exe, creates a desktop shortcut (WScript.Shell COM) and an `HKLM\...\Uninstall\SuperCopy` "Apps & features" entry; `/uninstall` removes menu + shortcut + entry + files (in-use exe deleted on reboot via `MoveFileEx`). Settings: "Install app..." button; startup prompt now installs there.
-- Menu install no longer copies the exe into `%APPDATA%` (`ShellIntegration.Install(exe)` registers the exe path; icon = `exe,0`); removed `IconMaker.WriteIco`/`Paths.IcoFile`. Portable `/install` (per-user, no admin) is unchanged.
+- Installer experiment reverted: it made AV detections worse (Program Files self-copy + HKLM uninstall key + `MoveFileEx` reboot-delete + reflection/COM shortcut = generic `MSIL/Tpyn` heuristics). Back to the portable design: per-user Explorer menu only, `/install` + `/uninstall` are menu add/remove, no `/setup`, no `Installer`/`CheckLocal`/`Admin.Relaunch(args)`.
+- Kept the AV-positive changes: `ShellIntegration.Install(exe)` registers the exe path (no `%APPDATA%` self-copy, icon = `exe,0`), `IconMaker.WriteIco`/`Paths.IcoFile` removed, self-update opens the browser, publisher metadata. Settings startup now checks the registry menu (`ShellIntegration.IsInstalled`) instead of an installed exe.
 - Verified: build (v2.0.50727) + `/selftest` exit 0.
 
 - About button in Settings (`OnAbout`): modal with name/version, description, exe build time, repo URL. Added `sc3.png` (compact UI) to the README Screenshots table.
