@@ -36,7 +36,7 @@ rem ---- embed the app icon in the EXE when the .ico is present ----
 set "ICON="
 if exist "SuperCopy.ico" set "ICON=/win32icon:SuperCopy.ico"
 
-"%CSC%" /nologo /target:winexe /optimize+ /debug- /warn:4 %LANG% %ICON% ^
+"%CSC%" /nologo /target:winexe /optimize+ /debug- /warn:4 /codepage:65001 %LANG% %ICON% ^
     /out:SuperCopy.exe ^
     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll ^
     SuperCopy.cs

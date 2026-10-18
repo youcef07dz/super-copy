@@ -91,6 +91,7 @@ namespace SuperCopyApp
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Settings.Load();
+            L.Apply(Settings.Language);
             try
             {
                 switch (mode)
@@ -104,11 +105,11 @@ namespace SuperCopyApp
                         return 0;
                     case "/install":
                         ShellIntegration.Install(Application.ExecutablePath);
-                        MessageBox.Show("Explorer menu installed.", "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Msg.Show(L.T("Explorer menu installed.", "تم تثبيت قائمة المستكشف.", "Menu de l'Explorateur installé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     case "/uninstall":
                         ShellIntegration.Uninstall();
-                        MessageBox.Show("Explorer menu removed.", "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Msg.Show(L.T("Explorer menu removed.", "تمت إزالة قائمة المستكشف.", "Menu de l'Explorateur supprimé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     default:
                         Application.Run(new SettingsForm());
@@ -117,7 +118,7 @@ namespace SuperCopyApp
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Msg.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
         }
@@ -129,7 +130,7 @@ namespace SuperCopyApp
             if (dest.Length == 2 && dest[1] == ':') dest += "\\";
             if (dest.Length == 0 || !Directory.Exists(dest))
             {
-                MessageBox.Show("Destination folder not found:\n" + dest, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Msg.Show(L.T("Destination folder not found:\n", "مجلد الوجهة غير موجود:\n", "Dossier de destination introuvable :\n") + dest, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return 1;
             }
 
@@ -137,7 +138,9 @@ namespace SuperCopyApp
             List<string> src = ClipStore.Read(out cut);
             if (src.Count == 0)
             {
-                MessageBox.Show("Nothing to paste.\nRight-click a file or folder and choose \"Super Copy\" first.",
+                Msg.Show(L.T("Nothing to paste.\nRight-click a file or folder and choose \"Super Copy\" first.",
+                                    "لا يوجد ما يتم لصقه.\nانقر بزر الماوس الأيمن على ملف أو مجلد واختر \"Super Copy\" أولاً.",
+                                    "Rien à coller.\nFaites un clic droit sur un fichier ou dossier et choisissez « Super Copy » d'abord."),
                     "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }
@@ -194,13 +197,15 @@ namespace SuperCopyApp
                 ClipStore.Clear(Paths.ClipDevice);
                 if (src.Count == 0)
                 {
-                    MessageBox.Show("Nothing to copy.\nRight-click a file or folder and choose \"Copy to dest...\" first.",
+                    Msg.Show(L.T("Nothing to copy.\nRight-click a file or folder and choose \"Copy to dest...\" first.",
+                                        "لا يوجد ما يتم نسخه.\nانقر بزر الماوس الأيمن على ملف أو مجلد واختر \"نسخ إلى مجلد...\" أولاً.",
+                                        "Rien à copier.\nFaites un clic droit sur un fichier ou dossier et choisissez « Copier vers... » d'abord."),
                         "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return 0;
                 }
 
                 FolderBrowserDialog fb = new FolderBrowserDialog();
-                fb.Description = "Choose the destination folder";
+                fb.Description = L.T("Choose the destination folder", "اختر مجلد الوجهة", "Choisissez le dossier de destination");
                 if (fb.ShowDialog() != DialogResult.OK || fb.SelectedPath == null || fb.SelectedPath.Length == 0) return 0;
 
                 Application.Run(new MainForm(new CopyJob(src, fb.SelectedPath, false)));
@@ -211,6 +216,25 @@ namespace SuperCopyApp
                 m.Close();
             }
             return 0;
+        }
+    }
+
+    // MessageBox with RTL reading order/alignment when Arabic is active.
+    static class Msg
+    {
+        static MessageBoxOptions Opts
+        {
+            get { return L.Rtl ? (MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) : 0; }
+        }
+
+        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            return MessageBox.Show(text, caption, buttons, icon, MessageBoxDefaultButton.Button1, Opts);
+        }
+
+        public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            return MessageBox.Show(owner, text, caption, buttons, icon, MessageBoxDefaultButton.Button1, Opts);
         }
     }
 
@@ -261,6 +285,7 @@ namespace SuperCopyApp
         public static bool RobocopyAvailable { get { try { return File.Exists(Path.Combine(Environment.SystemDirectory, "robocopy.exe")); } catch { return false; } } }
         public static bool AutoClose = false;
         public static bool Compact = false;           // start in compact (header-only) mode
+        public static volatile int Language = 0;      // 0 auto (OS), 1 English, 2 Arabic, 3 French
 
         static int Clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -285,6 +310,7 @@ namespace SuperCopyApp
                         case "engine": if (int.TryParse(v, out n)) Engine = Clamp(n, 0, 1); break;
                         case "autoclose": AutoClose = (v == "1"); break;
                         case "compact": Compact = (v == "1"); break;
+                        case "language": if (int.TryParse(v, out n)) Language = Clamp(n, 0, 3); break;
                     }
                 }
             }
@@ -302,7 +328,8 @@ namespace SuperCopyApp
                     "Conflict=" + Conflict,
                     "Engine=" + Engine,
                     "AutoClose=" + (AutoClose ? "1" : "0"),
-                    "Compact=" + (Compact ? "1" : "0") }, null);
+                    "Compact=" + (Compact ? "1" : "0"),
+                    "Language=" + Language }, null);
             }
             catch { }
         }
@@ -317,6 +344,56 @@ namespace SuperCopyApp
             Conflict = DefaultConflict;
             Engine = DefaultEngine;
             AutoClose = false;
+            Language = 0;
+        }
+    }
+
+    // ================================================================
+    //  Localization: English / Arabic / French (0 = auto from the OS)
+    // ================================================================
+    static class L
+    {
+        // resolved language: 1 English, 2 Arabic, 3 French
+        public static int Code = 1;
+
+        public static void Apply(int setting)
+        {
+            Code = setting;
+            if (setting == 0)
+            {
+                try
+                {
+                    string c = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.ToLower();
+                    Code = c == "ar" ? 2 : (c == "fr" ? 3 : 1);
+                }
+                catch { Code = 1; }
+            }
+            if (Code < 1 || Code > 3) Code = 1;
+        }
+
+        public static string T(string en, string ar, string fr)
+        {
+            return Code == 2 ? ar : (Code == 3 ? fr : en);
+        }
+
+        public static bool Rtl { get { return Code == 2; } }
+
+        // custom-drawn text: swap the physical alignment in RTL
+        public static TextFormatFlags Left
+        {
+            get { return Rtl ? TextFormatFlags.Right : TextFormatFlags.Left; }
+        }
+        public static TextFormatFlags Right
+        {
+            get { return Rtl ? TextFormatFlags.Left : TextFormatFlags.Right; }
+        }
+
+        // standard controls mirror themselves; custom paint checks L.Rtl.
+        // fullLayout also mirrors the form's control positions (dialogs only).
+        public static void ApplyRtl(Form f, bool fullLayout)
+        {
+            f.RightToLeft = Rtl ? RightToLeft.Yes : RightToLeft.No;
+            if (fullLayout) f.RightToLeftLayout = Rtl;
         }
     }
 
@@ -523,13 +600,13 @@ namespace SuperCopyApp
             }
             catch (Exception ex)
             {
-                MessageBox.Show(owner, "Could not check for updates:\n" + ex.Message, "Super Copy",
+                Msg.Show(owner, L.T("Could not check for updates:\n", "تعذّر التحقق من التحديثات:\n", "Impossible de vérifier les mises à jour :\n") + ex.Message, "Super Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             if (latest <= Current)
             {
-                MessageBox.Show(owner, "You already have the latest version (v" + Current + ").", "Super Copy",
+                Msg.Show(owner, L.T("You already have the latest version (v", "لديك بالفعل أحدث إصدار (v", "Vous avez déjà la dernière version (v") + Current + ").", "Super Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -541,9 +618,10 @@ namespace SuperCopyApp
         // engines flag); the user downloads the new exe from the page themselves
         public static void OfferUpdate(Form owner, int latest)
         {
-            if (MessageBox.Show(owner,
-                "Version v" + latest + " is available (you have v" + Current + ").\n\n" +
-                "Open the download page?",
+            if (Msg.Show(owner,
+                L.T("Version v", "الإصدار v", "La version v") + latest +
+                L.T(" is available (you have v", " متاح (لديك v", " est disponible (vous avez v") + Current + ").\n\n" +
+                L.T("Open the download page?", "هل تريد فتح صفحة التنزيل؟", "Ouvrir la page de téléchargement ?"),
                 "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             OpenUrl(owner, ReleasesUrl);
         }
@@ -558,7 +636,7 @@ namespace SuperCopyApp
             }
             catch (Exception ex)
             {
-                MessageBox.Show(owner, "Could not open the browser:\n" + ex.Message, "Super Copy",
+                Msg.Show(owner, L.T("Could not open the browser:\n", "تعذّر فتح المتصفح:\n", "Impossible d'ouvrir le navigateur :\n") + ex.Message, "Super Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -647,12 +725,12 @@ namespace SuperCopyApp
             string p = wow ? @"Wow6432Node\" : "";
             foreach (string root in new string[] { @"*\shell", @"Directory\shell" })
             {
-                Verb(cls, p + root + @"\SuperCopy", "Super Copy", ico, q, "/copy \"%1\"");
-                Verb(cls, p + root + @"\SuperCut", "Super Cut (move)", ico, q, "/cut \"%1\"");
-                Verb(cls, p + root + @"\SuperToDevice", "Copy to dest...", ico, q, "/todevice \"%1\"");
+                Verb(cls, p + root + @"\SuperCopy", L.T("Super Copy", "نسخ فائق", "Super copie"), ico, q, "/copy \"%1\"");
+                Verb(cls, p + root + @"\SuperCut", L.T("Super Cut (move)", "قص فائق (نقل)", "Super coupe (déplacer)"), ico, q, "/cut \"%1\"");
+                Verb(cls, p + root + @"\SuperToDevice", L.T("Copy to dest...", "نسخ إلى مجلد...", "Copier vers..."), ico, q, "/todevice \"%1\"");
             }
             // empty space only: %V is the folder itself
-            Verb(cls, p + @"Directory\Background\shell\SuperPaste", "Super Paste here", ico, q, "/paste \"%V\"");
+            Verb(cls, p + @"Directory\Background\shell\SuperPaste", L.T("Super Paste here", "لصق هنا", "Coller ici"), ico, q, "/paste \"%V\"");
         }
 
         public static void Uninstall()
@@ -796,6 +874,7 @@ namespace SuperCopyApp
                 {
                     int bw = Math.Max(30, tr.Width / 4);
                     int x = (tick * 16) % (tr.Width + bw) - bw;
+                    if (L.Rtl) x = tr.Width - x - bw;
                     fr = new Rectangle(tr.X + x, tr.Y, bw, tr.Height);
                 }
                 else
@@ -803,7 +882,8 @@ namespace SuperCopyApp
                     if (frac < 0) frac = 0;
                     if (frac > 1) frac = 1;
                     int w = (int)Math.Round(tr.Width * frac);
-                    if (w > 0) fr = new Rectangle(tr.X, tr.Y, w, tr.Height);
+                    if (w > 0) fr = L.Rtl ? new Rectangle(tr.Right - w, tr.Y, w, tr.Height)
+                                          : new Rectangle(tr.X, tr.Y, w, tr.Height);
                 }
                 if (fr.Width > 0)
                 {
@@ -915,8 +995,8 @@ namespace SuperCopyApp
             Sources = sources; Dest = dest; Move = move;
             string first = Path.GetFileName(sources[0].TrimEnd('\\', '/'));
             if (first == null || first.Length == 0) first = sources[0];
-            string what = sources.Count == 1 ? "\"" + first + "\"" : sources.Count + " items";
-            Summary = what + " to " + dest;
+            string what = sources.Count == 1 ? "\"" + first + "\"" : sources.Count + " " + L.T("items", "عنصر", "éléments");
+            Summary = what + " " + L.T("to", "إلى", "vers") + " " + dest;
         }
 
         public long Total { get { return Interlocked.Read(ref TotalBytes); } }
@@ -1192,7 +1272,7 @@ namespace SuperCopyApp
                     if (it.State != 3) continue;
                     sb.Append(it.Name);
                     sb.Append(": ");
-                    sb.Append(it.Error == null ? "unknown error" : it.Error);
+                    sb.Append(it.Error == null ? L.T("unknown error", "خطأ غير معروف", "erreur inconnue") : it.Error);
                     sb.Append("\r\n");
                 }
             }
@@ -1757,9 +1837,21 @@ namespace SuperCopyApp
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            int x = Width - 14;
-            if (HideButton != null) { HideButton.Location = new Point(x - HideButton.Width, 9); x -= HideButton.Width + 6; }
-            if (ModeButton != null) ModeButton.Location = new Point(x - ModeButton.Width, 9);
+            Relayout();
+        }
+
+        public void Relayout()
+        {
+            if (L.Rtl)
+            {
+                int x = 14;
+                if (HideButton != null) { HideButton.Location = new Point(x, 9); x += HideButton.Width + 6; }
+                if (ModeButton != null) ModeButton.Location = new Point(x, 9);
+                return;
+            }
+            int x2 = Width - 14;
+            if (HideButton != null) { HideButton.Location = new Point(x2 - HideButton.Width, 9); x2 -= HideButton.Width + 6; }
+            if (ModeButton != null) ModeButton.Location = new Point(x2 - ModeButton.Width, 9);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1772,24 +1864,41 @@ namespace SuperCopyApp
             using (LinearGradientBrush ab = new LinearGradientBrush(new Rectangle(0, Height - 3, Width, 3), Theme.Cyan, Theme.Violet, 0f))
                 g.FillRectangle(ab, 0, Height - 3, Width, 3);
 
-            int hideLeft = ModeButton != null ? ModeButton.Left : (HideButton != null ? HideButton.Left : Width - 90);
-            Rectangle timeR = new Rectangle(hideLeft - 118, 10, 110, 24);
-            Rectangle titleR = new Rectangle(14, 10, Math.Max(40, timeR.Left - 24), 24);
+            Rectangle timeR, titleR;
+            TextFormatFlags titleFlag, timeFlag;
+            if (L.Rtl)
+            {
+                int btnRight = 14;
+                if (ModeButton != null) btnRight = Math.Max(btnRight, ModeButton.Right);
+                if (HideButton != null) btnRight = Math.Max(btnRight, HideButton.Right);
+                timeR = new Rectangle(btnRight + 12, 10, 110, 24);
+                titleR = new Rectangle(timeR.Right + 10, 10, Math.Max(40, Width - 14 - (timeR.Right + 10)), 24);
+                titleFlag = TextFormatFlags.Right;   // title hugs the right edge
+                timeFlag = TextFormatFlags.Left;     // elapsed sits near the buttons
+            }
+            else
+            {
+                int hideLeft = ModeButton != null ? ModeButton.Left : (HideButton != null ? HideButton.Left : Width - 90);
+                timeR = new Rectangle(hideLeft - 118, 10, 110, 24);
+                titleR = new Rectangle(14, 10, Math.Max(40, timeR.Left - 24), 24);
+                titleFlag = TextFormatFlags.Left;
+                timeFlag = TextFormatFlags.Right;
+            }
             TextRenderer.DrawText(g, Title, Theme.Title, titleR, Theme.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                titleFlag | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(g, Elapsed, Theme.Big, timeR, Theme.Cyan,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                timeFlag | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
 
             Rectangle bar = new Rectangle(14, 42, Width - 28, 26);
             Gfx.Bar(g, bar, Frac, ColA, ColB, BarText, Marquee, Tick, 8);
 
             Rectangle sr = new Rectangle(14, 74, Width - 28, 20);
             TextRenderer.DrawText(g, TxtL, Theme.Bold, sr, Theme.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(g, TxtM, Theme.Bold, sr, Theme.Text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(g, TxtR, Theme.Cell, sr, Theme.Dim,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }
     }
 
@@ -1809,11 +1918,13 @@ namespace SuperCopyApp
             if (Width < 20 || Height < 10) return;
             using (LinearGradientBrush lb = new LinearGradientBrush(ClientRectangle, Theme.Cyan, Theme.Violet, 0f))
                 g.FillRectangle(lb, ClientRectangle);
-            g.DrawImage(IconMaker.MakeBitmap(32), 14, (Height - 32) / 2);
-            TextRenderer.DrawText(g, Title, Theme.Title, new Rectangle(56, 8, Width - 60, 22), Color.White,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, Sub, Theme.Cell, new Rectangle(56, 30, Width - 60, 18), Color.FromArgb(230, 235, 255),
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            g.DrawImage(IconMaker.MakeBitmap(32), L.Rtl ? Width - 46 : 14, (Height - 32) / 2);
+            Rectangle trTitle = L.Rtl ? new Rectangle(14, 8, Width - 60, 22) : new Rectangle(56, 8, Width - 60, 22);
+            Rectangle trSub = L.Rtl ? new Rectangle(14, 30, Width - 60, 18) : new Rectangle(56, 30, Width - 60, 18);
+            TextRenderer.DrawText(g, Title, Theme.Title, trTitle, Color.White,
+                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, Sub, Theme.Cell, trSub, Color.FromArgb(230, 235, 255),
+                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
     }
 
@@ -1855,6 +1966,7 @@ namespace SuperCopyApp
         string lastDest;   // most recent job's folder: drop menu offers it as "same destination"
         HeaderPanel header;
         BufferedListView lv;
+        ColumnHeader colFile;
         ListBox jobBox;
         Panel bottom;
         Button btnPause, btnCancel, btnSettings, btnHide, btnMode;
@@ -1863,13 +1975,20 @@ namespace SuperCopyApp
         Button btnErrReport;
         System.Windows.Forms.Timer timer;
         NotifyIcon tray;
+        ContextMenu trayMenu;
         bool exiting, doneHandled, settingSel, compact;
         bool adminPrompted, retryEscalated;   // access-denied -> "retry as admin?" asked / elevating
         int lastTick, tickN, closeAt = -1;
         Size savedSize;
 
-        const TextFormatFlags CellFlags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+        static TextFormatFlags CellFlags
+        {
+            get
+            {
+                return L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                       TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+            }
+        }
 
         public MainForm(CopyJob first)
         {
@@ -1880,6 +1999,7 @@ namespace SuperCopyApp
             ClientSize = new Size(800, 520);
             MinimumSize = new Size(660, 380);
             Icon = IconMaker.MakeIcon();
+            L.ApplyRtl(this, false);
 
             // ----- file list -----
             lv = new BufferedListView();
@@ -1893,12 +2013,7 @@ namespace SuperCopyApp
             lv.BorderStyle = BorderStyle.None;
             lv.BackColor = Theme.Row1;
             lv.ForeColor = Theme.Text;
-            lv.Columns.Add("File", 300);
-            lv.Columns.Add("Size", 80);
-            lv.Columns.Add("Progress", 150);
-            lv.Columns.Add("Speed", 85);
-            lv.Columns.Add("ETA", 65);
-            lv.Columns.Add("Status", 120);
+            BuildColumns();
             ImageList rowH = new ImageList();      // trick: taller rows for the progress bars
             rowH.ImageSize = new Size(1, 24);
             lv.SmallImageList = rowH;
@@ -1913,14 +2028,14 @@ namespace SuperCopyApp
             bottom.Dock = DockStyle.Bottom;
             bottom.Height = 46;
             bottom.BackColor = Theme.Panel;
-            btnPause = UI.MakeButton("Pause", 78, Color.FromArgb(214, 140, 30));
-            btnCancel = UI.MakeButton("Cancel", 78, Color.FromArgb(200, 55, 75));
-            btnSettings = UI.MakeButton("Settings", 84, Color.FromArgb(70, 90, 170));
+            btnPause = UI.MakeButton(L.T("Pause", "إيقاف", "Pause"), 78, Color.FromArgb(214, 140, 30));
+            btnCancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 78, Color.FromArgb(200, 55, 75));
+            btnSettings = UI.MakeButton(L.T("Settings", "الإعدادات", "Paramètres"), 84, Color.FromArgb(70, 90, 170));
             btnPause.Location = new Point(12, 9);
             btnCancel.Location = new Point(98, 9);
             btnSettings.Location = new Point(184, 9);
             chkClose = new CheckBox();
-            chkClose.Text = "Close when finished";
+            chkClose.Text = L.T("Close when finished", "إغلاق عند الانتهاء", "Fermer à la fin");
             chkClose.AutoSize = true;
             chkClose.ForeColor = Theme.Text;
             chkClose.BackColor = Theme.Panel;
@@ -1934,7 +2049,7 @@ namespace SuperCopyApp
             lblErr.BackColor = Theme.Panel;
             lblErr.TextAlign = ContentAlignment.MiddleRight;
             lblErr.SetBounds(440, 14, 300, 18);
-            btnErrReport = UI.MakeButton("Error report", 106, Color.FromArgb(200, 55, 75));
+            btnErrReport = UI.MakeButton(L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs"), 132, Color.FromArgb(200, 55, 75));
             btnErrReport.Visible = false;
             bottom.Controls.Add(btnPause);
             bottom.Controls.Add(btnCancel);
@@ -1964,13 +2079,13 @@ namespace SuperCopyApp
             header = new HeaderPanel();
             header.Dock = DockStyle.Top;
             header.Height = 104;
-            btnHide = UI.MakeButton("Hide", 70, Color.FromArgb(70, 90, 170));
+            btnHide = UI.MakeButton(L.T("Hide", "إخفاء", "Masquer"), 70, Color.FromArgb(70, 90, 170));
             btnHide.Height = 26;
             header.HideButton = btnHide;
             header.Controls.Add(btnHide);
             btnHide.Location = new Point(header.Width - btnHide.Width - 14, 9);
             btnHide.Click += new EventHandler(btnHide_Click);
-            btnMode = UI.MakeButton("Compact", 78, Color.FromArgb(60, 120, 140));
+            btnMode = UI.MakeButton(L.T("Compact", "مضغوط", "Compact"), 78, Color.FromArgb(60, 120, 140));
             btnMode.Height = 26;
             header.ModeButton = btnMode;
             header.Controls.Add(btnMode);
@@ -2000,12 +2115,12 @@ namespace SuperCopyApp
             tray.Text = "Super Copy";
             tray.Visible = false;
             tray.DoubleClick += new EventHandler(tray_Show);
-            ContextMenu cm = new ContextMenu();
-            cm.MenuItems.Add("Show window", new EventHandler(tray_Show));
-            cm.MenuItems.Add("Pause / Resume", new EventHandler(btnPause_Click));
-            cm.MenuItems.Add("-");
-            cm.MenuItems.Add("Cancel all and exit", new EventHandler(tray_Exit));
-            tray.ContextMenu = cm;
+            trayMenu = new ContextMenu();
+            trayMenu.MenuItems.Add(L.T("Show window", "إظهار النافذة", "Afficher la fenêtre"), new EventHandler(tray_Show));
+            trayMenu.MenuItems.Add(L.T("Pause / Resume", "إيقاف / متابعة", "Pause / Reprendre"), new EventHandler(btnPause_Click));
+            trayMenu.MenuItems.Add("-");
+            trayMenu.MenuItems.Add(L.T("Cancel all and exit", "إلغاء الكل والخروج", "Tout annuler et quitter"), new EventHandler(tray_Exit));
+            tray.ContextMenu = trayMenu;
 
             if (first != null) AddJob(first);   // null: /queue mode, jobs arrive via PollQueue
 
@@ -2019,6 +2134,29 @@ namespace SuperCopyApp
             bottom_Resize(null, null);
             if (Settings.Compact) SetCompact(true);
             ConflictPrompt.Ask = AskConflict;      // let worker threads pop the "file exists" prompt
+        }
+
+        // Re-apply the chosen language to this window (after Settings is saved).
+        public void ApplyLanguage()
+        {
+            L.ApplyRtl(this, false);
+            btnCancel.Text = L.T("Cancel", "إلغاء", "Annuler");
+            btnSettings.Text = L.T("Settings", "الإعدادات", "Paramètres");
+            btnHide.Text = L.T("Hide", "إخفاء", "Masquer");
+            btnErrReport.Text = L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs");
+            chkClose.Text = L.T("Close when finished", "إغلاق عند الانتهاء", "Fermer à la fin");
+            trayMenu.MenuItems[0].Text = L.T("Show window", "إظهار النافذة", "Afficher la fenêtre");
+            trayMenu.MenuItems[1].Text = L.T("Pause / Resume", "إيقاف / متابعة", "Pause / Reprendre");
+            trayMenu.MenuItems[3].Text = L.T("Cancel all and exit", "إلغاء الكل والخروج", "Tout annuler et quitter");
+            BuildColumns();
+            btnMode.Text = compact ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
+            UpdateButtons();
+            lv_Resize(null, EventArgs.Empty);
+            bottom_Resize(null, EventArgs.Empty);
+            header.Relayout();
+            header.Invalidate();
+            lv.Invalidate();
+            jobBox.Invalidate();
         }
 
         // ------------------------------------------------------------
@@ -2046,9 +2184,9 @@ namespace SuperCopyApp
             ContextMenu cm = new ContextMenu();
             string same = lastDest;
             string shortDest = same.Length > 40 ? "..." + same.Substring(same.Length - 37) : same;
-            MenuItem mSame = new MenuItem("1. Same destination (" + shortDest + ")");
+            MenuItem mSame = new MenuItem(L.T("1. Same destination (", "1. نفس الوجهة (", "1. Même destination (") + shortDest + ")");
             mSame.Click += delegate { cm.Dispose(); AddJob(new CopyJob(new List<string>(paths), same, false)); };
-            MenuItem mOther = new MenuItem("2. Another destination...");
+            MenuItem mOther = new MenuItem(L.T("2. Another destination...", "2. وجهة أخرى...", "2. Autre destination..."));
             mOther.Click += delegate { cm.Dispose(); PickDropDest(paths, same); };
             cm.MenuItems.Add(mSame);
             cm.MenuItems.Add(mOther);
@@ -2060,7 +2198,7 @@ namespace SuperCopyApp
         {
             using (FolderBrowserDialog fb = new FolderBrowserDialog())
             {
-                fb.Description = "Destination folder for the dropped items";
+                fb.Description = L.T("Destination folder for the dropped items", "مجلد الوجهة للعناصر المسحوبة", "Dossier de destination des éléments déposés");
                 if (seed != null) fb.SelectedPath = seed;
                 if (fb.ShowDialog(this) != DialogResult.OK) return;
                 AddJob(new CopyJob(new List<string>(paths), fb.SelectedPath, false));
@@ -2219,10 +2357,16 @@ namespace SuperCopyApp
                 {
                     adminPrompted = true;
                     if (!Visible) ShowFromTray();
-                    if (MessageBox.Show(this,
-                        "Some files could not be copied: access is denied.\n\n" +
-                        "Retry the failed items as administrator?\n" +
-                        "Super Copy will restart elevated and continue.",
+                    if (Msg.Show(this,
+                        L.T("Some files could not be copied: access is denied.\n\n" +
+                            "Retry the failed items as administrator?\n" +
+                            "Super Copy will restart elevated and continue.",
+                            "تعذّر نسخ بعض الملفات: تم رفض الوصول.\n\n" +
+                            "هل تريد إعادة المحاولة للملفات الفاشلة كمسؤول؟\n" +
+                            "ستُعاد Super Copy التشغيل بصلاحيات المسؤول وتتابع.",
+                            "Certains fichiers n'ont pas pu être copiés : accès refusé.\n\n" +
+                            "Réessayer les éléments échoués en tant qu'administrateur ?\n" +
+                            "Super Copy redémarrera avec élévation et continuera."),
                         "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                     {
                         // stop polling first: the UAC prompt pumps messages and the old
@@ -2235,7 +2379,7 @@ namespace SuperCopyApp
                             return;
                         }
                         retryEscalated = false;
-                        MessageBox.Show(this, "Could not start the elevated copy.", "Super Copy",
+                        Msg.Show(this, L.T("Could not start the elevated copy.", "تعذّر بدء النسخ بصلاحيات المسؤول.", "Impossible de démarrer la copie élevée."), "Super Copy",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
@@ -2288,7 +2432,7 @@ namespace SuperCopyApp
             }
             else if (!Visible)
             {
-                try { tray.ShowBalloonTip(3000, "Super Copy", "All operations completed.", ToolTipIcon.Info); } catch { }
+                try { tray.ShowBalloonTip(3000, "Super Copy", L.T("All operations completed.", "اكتملت جميع العمليات.", "Toutes les opérations sont terminées."), ToolTipIcon.Info); } catch { }
             }
         }
 
@@ -2298,10 +2442,11 @@ namespace SuperCopyApp
             HeaderPanel h = header;
             long total = j.Total, done = j.DoneNow;
             int files = j.ItemCount;
-            string errs = j.Errors > 0 ? "    Errors: " + j.Errors : "";
-            string filesTxt = j.FilesDone + " / " + files + (j.ScanDone ? "" : "+") + " files    " +
+            string errs = j.Errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + j.Errors : "";
+            string filesTxt = j.FilesDone + " / " + files + (j.ScanDone ? "" : "+") + " " +
+                              L.T("files", "ملف", "fichiers") + "    " +
                               Fmt.Size(done) + " / " + Fmt.Size(total) + (j.ScanDone ? "" : "+") + errs;
-            string verb = j.Move ? "Moving " : "Copying ";
+            string verb = j.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
             h.Elapsed = Fmt.Time(j.ActiveMs / 1000.0);
             h.Marquee = false;
             h.Frac = j.Fraction;
@@ -2309,53 +2454,57 @@ namespace SuperCopyApp
 
             if (!j.Started)
             {
-                h.Title = "Queued: " + j.Summary;
-                h.BarText = "Waiting...";
+                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j.Summary;
+                h.BarText = L.T("Waiting...", "بالانتظار...", "En attente...");
                 h.Frac = 0;
                 h.ColA = Color.FromArgb(70, 80, 120); h.ColB = Color.FromArgb(100, 110, 150);
-                h.TxtL = "Speed: -"; h.TxtM = "Total ETA: -";
+                h.TxtL = L.T("Speed: -", "السرعة: -", "Vitesse : -");
+                h.TxtM = L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -");
             }
             else if (j.Finished)
             {
                 if (j.Cancelled)
                 {
-                    h.Title = "Cancelled: " + j.Summary;
+                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j.Summary;
                     h.ColA = Color.FromArgb(210, 120, 30); h.ColB = Color.FromArgb(255, 190, 90);
                 }
                 else if (j.Errors > 0)
                 {
-                    h.Title = "Finished with errors: " + j.Summary;
+                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(200, 40, 60); h.ColB = Color.FromArgb(255, 120, 100);
                 }
                 else
                 {
-                    h.Title = "Completed: " + j.Summary;
+                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(30, 170, 100); h.ColB = Color.FromArgb(120, 240, 160);
                 }
                 h.BarText = ((int)Math.Round(h.Frac * 100)) + "%";
                 double avg = j.ActiveMs > 0 ? done * 1000.0 / j.ActiveMs : 0;
-                h.TxtL = "Average speed: " + Fmt.Size((long)avg) + "/s";
-                h.TxtM = "Total time: " + Fmt.Time(j.ActiveMs / 1000.0);
+                h.TxtL = L.T("Average speed: ", "متوسط السرعة: ", "Vitesse moyenne : ") + Fmt.Size((long)avg) + "/s";
+                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(j.ActiveMs / 1000.0);
             }
             else
             {
                 bool paused = j.Paused;
-                h.Title = (paused ? "Paused - " : verb) + j.Summary;
+                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j.Summary;
                 if (!j.ScanDone)
                 {
                     h.Marquee = true;
-                    h.BarText = "Scanning folders...  " + files + " files found";
+                    h.BarText = L.T("Scanning folders...  ", "جارٍ فحص المجلدات...  ", "Analyse des dossiers...  ") +
+                                files + " " + L.T("files found", "ملف", "fichiers");
                 }
                 else h.BarText = (h.Frac * 100).ToString("0.0") + "%";
                 if (paused) { h.ColA = Theme.Orange; h.ColB = Color.FromArgb(255, 210, 110); }
                 else { h.ColA = Theme.Cyan; h.ColB = Theme.Violet; }
-                h.TxtL = paused ? "Speed: paused" : "Speed: " + Fmt.Size((long)j.Speed) + "/s";
-                h.TxtM = paused ? "Total ETA: -" :
-                         (j.ScanDone ? "Total ETA: " + Fmt.Time(j.Eta) : "Total ETA: calculating...");
+                h.TxtL = paused ? L.T("Speed: paused", "السرعة: متوقفة", "Vitesse : en pause")
+                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size((long)j.Speed) + "/s";
+                h.TxtM = paused ? L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -")
+                                : (j.ScanDone ? L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(j.Eta)
+                                              : L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul..."));
             }
-            lblErr.Text = j.LastError == null ? "" : "Last error: " + j.LastError;
+            lblErr.Text = j.LastError == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + j.LastError;
         }
 
         void UpdateButtons()
@@ -2363,7 +2512,7 @@ namespace SuperCopyApp
             bool active = cur != null && !cur.Finished;
             btnPause.Enabled = active;
             btnCancel.Enabled = active;
-            string t = (cur != null && cur.Paused) ? "Resume" : "Pause";
+            string t = (cur != null && cur.Paused) ? L.T("Resume", "متابعة", "Reprendre") : L.T("Pause", "إيقاف", "Pause");
             if (btnPause.Text != t) btnPause.Text = t;
             bool showErr = cur != null && cur.Errors > 0;
             if (btnErrReport.Visible != showErr)
@@ -2391,16 +2540,17 @@ namespace SuperCopyApp
         {
             if (cur == null) return;
             string text = cur.ErrorReport();
-            if (text.Length == 0) text = "No errors.";
+            if (text.Length == 0) text = L.T("No errors.", "لا توجد أخطاء.", "Aucune erreur.");
 
             Form f = new Form();
-            f.Text = "Error report";
+            f.Text = L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs");
             f.Font = Theme.Cell;
             f.BackColor = Theme.Bg;
             f.ForeColor = Theme.Text;
             f.StartPosition = FormStartPosition.CenterParent;
             f.ClientSize = new Size(580, 360);
             f.MinimumSize = new Size(380, 200);
+            L.ApplyRtl(f, true);
 
             TextBox tb = new TextBox();
             tb.Multiline = true;
@@ -2417,16 +2567,16 @@ namespace SuperCopyApp
             bar.Dock = DockStyle.Bottom;
             bar.Height = 46;
             bar.BackColor = Theme.Panel;
-            Button copy = UI.MakeButton("Copy", 84, Color.FromArgb(70, 90, 170));
-            Button close = UI.MakeButton("Close", 84, Color.FromArgb(120, 120, 130));
+            Button copy = UI.MakeButton(L.T("Copy", "نسخ", "Copier"), 84, Color.FromArgb(70, 90, 170));
+            Button close = UI.MakeButton(L.T("Close", "إغلاق", "Fermer"), 84, Color.FromArgb(120, 120, 130));
             copy.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             copy.Location = new Point(f.ClientSize.Width - 190, 9);
             close.Location = new Point(f.ClientSize.Width - 96, 9);
             copy.Click += delegate
             {
-                try { Clipboard.SetText(tb.Text); copy.Text = "Copied"; }
-                catch (Exception) { copy.Text = "Failed"; }
+                try { Clipboard.SetText(tb.Text); copy.Text = L.T("Copied", "تم النسخ", "Copié"); }
+                catch (Exception) { copy.Text = L.T("Failed", "فشل", "Échec"); }
             };
             close.Click += delegate { f.Close(); };
             bar.Controls.Add(copy);
@@ -2439,8 +2589,10 @@ namespace SuperCopyApp
 
         void btnSettings_Click(object s, EventArgs e)
         {
+            int before = L.Code;
             using (SettingsForm f = new SettingsForm()) f.ShowDialog(this);
             chkClose.Checked = Settings.AutoClose;
+            if (L.Code != before) ApplyLanguage();
         }
 
         void btnHide_Click(object s, EventArgs e) { HideToTray(); }
@@ -2460,7 +2612,7 @@ namespace SuperCopyApp
             lv.Visible = !on;
             bottom.Visible = !on;
             jobBox.Visible = !on && jobs.Count >= 2;
-            btnMode.Text = on ? "Files" : "Compact";
+            btnMode.Text = on ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
             MaximizeBox = !on;
             if (on)
             {
@@ -2502,20 +2654,63 @@ namespace SuperCopyApp
 
         void bottom_Resize(object s, EventArgs e)
         {
-            int x = chkClose.Right + 14;
-            int right = bottom.ClientSize.Width - 12;
             int bw = btnErrReport != null && btnErrReport.Visible ? btnErrReport.Width : 0;
-            if (bw > 0) btnErrReport.SetBounds(right - bw, 9, bw, 28);
-            lblErr.SetBounds(x, 14, Math.Max(40, right - bw - 6 - x), 18);
+            if (L.Rtl)
+            {
+                int right = bottom.ClientSize.Width - 12;
+                btnPause.SetBounds(right - btnPause.Width, 9, btnPause.Width, 28);
+                btnCancel.SetBounds(btnPause.Left - 8 - btnCancel.Width, 9, btnCancel.Width, 28);
+                btnSettings.SetBounds(btnCancel.Left - 8 - btnSettings.Width, 9, btnSettings.Width, 28);
+                int chkLeft = btnSettings.Left - 16 - chkClose.Width;
+                chkClose.Location = new Point(chkLeft, 14);
+                int left = 12;
+                if (bw > 0) { btnErrReport.SetBounds(left, 9, bw, 28); left += bw + 6; }
+                lblErr.TextAlign = ContentAlignment.MiddleLeft;
+                lblErr.SetBounds(left, 14, Math.Max(40, chkLeft - 14 - left), 18);
+                return;
+            }
+            int x = chkClose.Right + 14;
+            int rightLtr = bottom.ClientSize.Width - 12;
+            if (bw > 0) btnErrReport.SetBounds(rightLtr - bw, 9, bw, 28);
+            lblErr.TextAlign = ContentAlignment.MiddleRight;
+            lblErr.SetBounds(x, 14, Math.Max(40, rightLtr - bw - 6 - x), 18);
         }
 
         void lv_Resize(object s, EventArgs e)
         {
+            if (lv == null || colFile == null) return;
             int others = 0;
-            for (int i = 1; i < lv.Columns.Count; i++) others += lv.Columns[i].Width;
+            for (int i = 0; i < lv.Columns.Count; i++)
+                if (lv.Columns[i] != colFile) others += lv.Columns[i].Width;
             int w = lv.ClientSize.Width - others;
             if (w < 120) w = 120;
-            if (lv.Columns[0].Width != w) lv.Columns[0].Width = w;
+            if (colFile.Width != w) colFile.Width = w;
+        }
+
+        // Column 0 is File in English/French; in RTL the physical order is
+        // reversed so the primary column sits on the right like Windows itself.
+        void BuildColumns()
+        {
+            lv.Columns.Clear();
+            if (L.Rtl)
+            {
+                lv.Columns.Add(L.T("Status", "الحالة", "État"), 120);
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), 90);
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), 85);
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), 150);
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), 80);
+                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), 300);
+            }
+            else
+            {
+                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), 300);
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), 80);
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), 150);
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), 85);
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), 90);
+                lv.Columns.Add(L.T("Status", "الحالة", "État"), 120);
+            }
+            lv_Resize(null, EventArgs.Empty);
         }
 
         void jobBox_Changed(object s, EventArgs e)
@@ -2529,8 +2724,10 @@ namespace SuperCopyApp
         {
             if (!exiting && AnyRunning())
             {
-                DialogResult r = MessageBox.Show(this,
-                    "Copy operations are still running.\n\nYes = cancel and exit\nNo = hide to the tray and keep copying",
+                DialogResult r = Msg.Show(this,
+                    L.T("Copy operations are still running.\n\nYes = cancel and exit\nNo = hide to the tray and keep copying",
+                        "عمليات النسخ ما زالت قيد التشغيل.\n\nنعم = إلغاء والخروج\nلا = الإخفاء إلى شريط المهام ومتابعة النسخ",
+                        "Des copies sont encore en cours.\n\nOui = annuler et quitter\nNon = masquer dans la zone de notification et continuer"),
                     "Super Copy", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
                 if (r == DialogResult.Cancel) { e.Cancel = true; return; }
                 if (r == DialogResult.No) { e.Cancel = true; HideToTray(); return; }
@@ -2569,7 +2766,8 @@ namespace SuperCopyApp
                 e.Graphics.FillRectangle(lb, r);
             using (Pen p = new Pen(Theme.Border))
             {
-                e.Graphics.DrawLine(p, r.Right - 1, r.Top + 4, r.Right - 1, r.Bottom - 5);
+                int sepX = L.Rtl ? r.Left : r.Right - 1;
+                e.Graphics.DrawLine(p, sepX, r.Top + 4, sepX, r.Bottom - 5);
                 e.Graphics.DrawLine(p, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
             }
             TextRenderer.DrawText(e.Graphics, e.Header.Text, Theme.Bold,
@@ -2593,16 +2791,18 @@ namespace SuperCopyApp
 
             Rectangle tr = new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 10), r.Height);
             bool paused = cur.Paused;
-            switch (e.ColumnIndex)
+            int logical = lv.Columns.Count - 1 - e.ColumnIndex;
+            if (!L.Rtl) logical = e.ColumnIndex;
+            switch (logical)
             {
                 case 0:
                     TextRenderer.DrawText(g, it.Name == null ? "" : it.Name, Theme.Cell, tr, Theme.Text,
-                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis |
+                        L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis |
                         TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 1:
                     TextRenderer.DrawText(g, it.Src == null ? "" : Fmt.Size(it.Size), Theme.Cell, tr, Theme.Dim,
-                        TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                        L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 2:
                     {
@@ -2616,15 +2816,15 @@ namespace SuperCopyApp
                     break;
                 case 3:
                     if (it.State == 1)
-                        TextRenderer.DrawText(g, paused ? "paused" : Fmt.Size((long)it.Speed) + "/s", Theme.Cell, tr, Theme.Text,
-                            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                        TextRenderer.DrawText(g, paused ? L.T("paused", "متوقف", "en pause") : Fmt.Size((long)it.Speed) + "/s", Theme.Cell, tr, Theme.Text,
+                            L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 4:
                     if (it.State == 1 && !paused && it.Speed > 1)
                     {
                         double left = (it.Size - Interlocked.Read(ref it.Done)) / it.Speed;
                         TextRenderer.DrawText(g, Fmt.Time(left), Theme.Cell, tr, Theme.Text,
-                            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                            L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     }
                     break;
                 case 5:
@@ -2632,12 +2832,12 @@ namespace SuperCopyApp
                         string t; Color c;
                         switch (it.State)
                         {
-                            case 1: t = paused ? "Paused" : "Copying"; c = paused ? Theme.Orange : Theme.Cyan; break;
-                            case 2: t = "Done"; c = Theme.Green; break;
-                            case 3: t = "Error: " + it.Error; c = Theme.Red; break;
-                            case 4: t = "Skipped"; c = Theme.Dim; break;
-                            case 5: t = "Cancelled"; c = Theme.Orange; break;
-                            default: t = "Pending"; c = Theme.Dim; break;
+                            case 1: t = paused ? L.T("Paused", "متوقف", "En pause") : L.T("Copying", "نسخ", "Copie"); c = paused ? Theme.Orange : Theme.Cyan; break;
+                            case 2: t = L.T("Done", "تم", "Terminé"); c = Theme.Green; break;
+                            case 3: t = L.T("Error: ", "خطأ: ", "Erreur : ") + it.Error; c = Theme.Red; break;
+                            case 4: t = L.T("Skipped", "تم التخطي", "Ignoré"); c = Theme.Dim; break;
+                            case 5: t = L.T("Cancelled", "ملغى", "Annulé"); c = Theme.Orange; break;
+                            default: t = L.T("Pending", "قيد الانتظار", "En attente"); c = Theme.Dim; break;
                         }
                         TextRenderer.DrawText(g, t, Theme.Cell, tr, c, CellFlags);
                     }
@@ -2656,16 +2856,19 @@ namespace SuperCopyApp
             bool sel = (e.State & DrawItemState.Selected) != 0;
             g.FillRectangle(sel ? Theme.BrSel : Theme.BrPanel, e.Bounds);
 
-            Rectangle tr = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(10, e.Bounds.Width - 240), e.Bounds.Height);
-            TextRenderer.DrawText(g, (e.Index + 1) + ".  " + (j.Move ? "Move " : "Copy ") + j.Summary,
+            Rectangle tr = L.Rtl
+                ? new Rectangle(e.Bounds.X + 232, e.Bounds.Y, Math.Max(10, e.Bounds.Width - 240), e.Bounds.Height)
+                : new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(10, e.Bounds.Width - 240), e.Bounds.Height);
+            TextRenderer.DrawText(g, (e.Index + 1) + ".  " + (j.Move ? L.T("Move ", "نقل ", "Déplacer ") : L.T("Copy ", "نسخ ", "Copier ")) + j.Summary,
                 Theme.Cell, tr, Theme.Text, CellFlags);
 
             int st = !j.Started ? 0 : (j.Finished ? (j.Cancelled ? 5 : (j.Errors > 0 ? 3 : 2)) : 1);
             Color a, b;
             Theme.BarColors(st, j.Paused, out a, out b);
             double f = (j.Finished && !j.Cancelled) ? 1.0 : j.Fraction;
-            string txt = !j.Started ? "Queued" : ((int)Math.Round(f * 100)) + "%";
-            Gfx.Bar(g, new Rectangle(e.Bounds.Right - 218, e.Bounds.Y + 5, 206, e.Bounds.Height - 10), f, a, b, txt, false, 0, 4);
+            string txt = !j.Started ? L.T("Queued", "في الانتظار", "En attente") : ((int)Math.Round(f * 100)) + "%";
+            int barX = L.Rtl ? e.Bounds.X + 12 : e.Bounds.Right - 218;
+            Gfx.Bar(g, new Rectangle(barX, e.Bounds.Y + 5, 206, e.Bounds.Height - 10), f, a, b, txt, false, 0, 4);
         }
     }
 
@@ -2676,7 +2879,7 @@ namespace SuperCopyApp
     {
         NumericUpDown numConc;
         CheckBox chkSmartConc;
-        ComboBox cmbBuf, cmbConf, cmbEngine;
+        ComboBox cmbBuf, cmbConf, cmbEngine, cmbLang;
         CheckBox chkClose;
         Label lblState;
         bool startupChecked;   // startup install/update suggestion runs once per window
@@ -2695,109 +2898,139 @@ namespace SuperCopyApp
 
         public SettingsForm()
         {
-            Text = "Super Copy - Settings";
+            Text = L.T("Super Copy - Settings", "Super Copy - الإعدادات", "Super Copy - Paramètres");
             Font = Theme.Cell;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 488);
+            ClientSize = new Size(430, 522);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
+            L.ApplyRtl(this, true);
 
             TitleBar tb = new TitleBar();
             tb.Title = "Super Copy";
-            tb.Sub = "Fast, light file copier with Explorer integration";
+            tb.Sub = L.T("Fast, light file copier with Explorer integration",
+                         "ناسخ ملفات سريع وخفيف مع تكامل المستكشف",
+                         "Copieur de fichiers rapide et léger avec intégration Explorateur");
             tb.Dock = DockStyle.Top;
             tb.Height = 56;
             Controls.Add(tb);
 
+            Controls.Add(MakeLabel(L.T("Language:", "اللغة:", "Langue :"), 20, 72, Theme.Text));
+            cmbLang = new ComboBox();
+            cmbLang.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbLang.Items.AddRange(new object[] {
+                L.T("Auto (system)", "تلقائي (النظام)", "Auto (système)"),
+                "English", "العربية", "Français" });
+            cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
+            cmbLang.SetBounds(240, 68, 160, 22);
+            Controls.Add(cmbLang);
+
             chkSmartConc = new CheckBox();
-            chkSmartConc.Text = "Use smart concurrency (auto by file size)";
+            chkSmartConc.Text = L.T("Use smart concurrency (auto by file size)",
+                                    "استخدام تزامن ذكي (تلقائي حسب حجم الملف)",
+                                    "Utiliser la concurrence intelligente (auto selon la taille)");
             chkSmartConc.AutoSize = true;
             chkSmartConc.ForeColor = Theme.Text;
             chkSmartConc.BackColor = Theme.Bg;
             chkSmartConc.Checked = Settings.SmartConcurrency;
-            chkSmartConc.Location = new Point(20, 72);
+            chkSmartConc.Location = new Point(20, 106);
             chkSmartConc.CheckedChanged += delegate(object s, EventArgs e) { if (numConc != null) numConc.Enabled = !chkSmartConc.Checked; };
             Controls.Add(chkSmartConc);
-            Controls.Add(MakeLabel("Concurrent copies (1 - 32):", 20, 100, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Concurrent copies (1 - 32):", "النسخ المتزامن (1 - 32):", "Copies simultanées (1 - 32) :"), 20, 134, Theme.Text));
             numConc = new NumericUpDown();
             numConc.Minimum = 1; numConc.Maximum = 32;
             numConc.Value = Math.Max(1, Math.Min(32, Settings.Concurrency));
-            numConc.SetBounds(300, 96, 100, 22);
+            numConc.SetBounds(300, 130, 100, 22);
             numConc.BackColor = Theme.Panel2; numConc.ForeColor = Color.White;
             numConc.Enabled = !chkSmartConc.Checked;
             Controls.Add(numConc);
-            Controls.Add(MakeLabel("Smart: <500KB→up to 10, 500KB-100MB→taper to 1, >100MB→1. Disable to set fixed value.", 20, 122, Theme.Dim));
+            Label hint = MakeLabel(L.T("Smart: <500KB→up to 10, 500KB-100MB→taper to 1, >100MB→1. Disable to set fixed value.",
+                                       "ذكي: <500 ك.ب→حتى 10، 500 ك.ب-100 م.ب→تناقص إلى 1، >100 م.ب→1. عطّل لتعيين قيمة ثابتة.",
+                                       "Intelligent : <500 Ko→jusqu'à 10, 500 Ko-100 Mo→réduction à 1, >100 Mo→1. Désactiver pour fixer une valeur."),
+                                  20, 154, Theme.Dim);
+            hint.AutoSize = false;
+            hint.SetBounds(20, 154, 390, 32);
+            Controls.Add(hint);
 
-            Controls.Add(MakeLabel("Copy buffer per thread:", 20, 152, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Copy buffer per thread:", "ذاكرة النسخ لكل خيط:", "Tampon de copie par thread :"), 20, 186, Theme.Text));
             cmbBuf = new ComboBox();
             cmbBuf.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbBuf.Items.AddRange(new object[] { "64 KB", "256 KB", "1 MB", "4 MB" });
             int bi = 1;
             for (int i = 0; i < BufSizes.Length; i++) if (BufSizes[i] == Settings.BufferKB) bi = i;
             cmbBuf.SelectedIndex = bi;
-            cmbBuf.SetBounds(240, 148, 160, 22);
+            cmbBuf.SetBounds(240, 182, 160, 22);
             Controls.Add(cmbBuf);
 
-            Controls.Add(MakeLabel("Copy engine:", 20, 188, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Copy engine:", "محرك النسخ:", "Moteur de copie :"), 20, 222, Theme.Text));
             cmbEngine = new ComboBox();
             cmbEngine.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbEngine.Items.Add("Built-in");
-            if (Settings.RobocopyAvailable) cmbEngine.Items.Add("Robocopy (Windows)");
+            cmbEngine.Items.Add(L.T("Built-in", "مدمج", "Intégré"));
+            if (Settings.RobocopyAvailable) cmbEngine.Items.Add(L.T("Robocopy (Windows)", "Robocopy (ويندوز)", "Robocopy (Windows)"));
             cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
             cmbEngine.Enabled = cmbEngine.Items.Count > 1;
-            cmbEngine.SetBounds(240, 184, 160, 22);
+            cmbEngine.SetBounds(240, 218, 160, 22);
             Controls.Add(cmbEngine);
 
-            Controls.Add(MakeLabel("If a file already exists:", 20, 224, Theme.Text));
+            Controls.Add(MakeLabel(L.T("If a file already exists:", "إذا كان الملف موجوداً:", "Si un fichier existe déjà :"), 20, 258, Theme.Text));
             cmbConf = new ComboBox();
             cmbConf.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbConf.Items.AddRange(new object[] { "Overwrite", "Skip", "Keep both (rename)", "Overwrite only if newer", "Ask first" });
+            cmbConf.Items.AddRange(new object[] {
+                L.T("Overwrite", "استبدال", "Remplacer"),
+                L.T("Skip", "تخطي", "Ignorer"),
+                L.T("Keep both (rename)", "الاحتفاظ بالاثنين (إعادة تسمية)", "Garder les deux (renommer)"),
+                L.T("Overwrite only if newer", "استبدال فقط إذا كان أحدث", "Remplacer seulement si plus récent"),
+                L.T("Ask first", "السؤال أولاً", "Demander d'abord") });
             cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
-            cmbConf.SetBounds(240, 220, 160, 22);
+            cmbConf.SetBounds(240, 254, 160, 22);
             Controls.Add(cmbConf);
 
             chkClose = new CheckBox();
-            chkClose.Text = "Close the window automatically when finished";
+            chkClose.Text = L.T("Close the window automatically when finished",
+                                "إغلاق النافذة تلقائياً عند الانتهاء",
+                                "Fermer la fenêtre automatiquement à la fin");
             chkClose.AutoSize = true;
             chkClose.ForeColor = Theme.Text;
             chkClose.BackColor = Theme.Bg;
             chkClose.Checked = Settings.AutoClose;
-            chkClose.Location = new Point(20, 260);
+            chkClose.Location = new Point(20, 294);
             Controls.Add(chkClose);
 
-            Controls.Add(MakeLabel("Explorer right-click menu", 20, 300, Theme.Cyan));
-            Button bi2 = UI.MakeButton("Install menu", 180, Color.FromArgb(40, 150, 100));
-            Button br = UI.MakeButton("Remove menu", 180, Color.FromArgb(190, 60, 80));
-            bi2.Location = new Point(20, 322);
-            br.Location = new Point(220, 322);
+            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 334, Theme.Cyan));
+            Button bi2 = UI.MakeButton(L.T("Install menu", "تثبيت القائمة", "Installer le menu"), 180, Color.FromArgb(40, 150, 100));
+            Button br = UI.MakeButton(L.T("Remove menu", "إزالة القائمة", "Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
+            bi2.Location = new Point(20, 356);
+            br.Location = new Point(220, 356);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
             Controls.Add(bi2);
             Controls.Add(br);
-            lblState = MakeLabel("", 20, 360, Theme.Dim);
+            lblState = MakeLabel("", 20, 394, Theme.Dim);
             Controls.Add(lblState);
-            Controls.Add(MakeLabel("Windows 11: entries are under \"Show more options\" (Shift+F10).", 20, 380, Theme.Dim));
+            Controls.Add(MakeLabel(L.T("Windows 11: entries are under \"Show more options\" (Shift+F10).",
+                                       "ويندوز 11: تظهر الإدخالات تحت \"إظهار المزيد من الخيارات\" (Shift+F10).",
+                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 414, Theme.Dim));
             RefreshState();
 
-            Controls.Add(MakeLabel("Version " + Updates.Current, 20, 418, Theme.Text));
-            Button babt = UI.MakeButton("About", 84, Color.FromArgb(90, 96, 130));
-            babt.Location = new Point(150, 412);
+            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 452, Theme.Text));
+            Button babt = UI.MakeButton(L.T("About", "حول", "À propos"), 84, Color.FromArgb(90, 96, 130));
+            babt.Location = new Point(132, 446);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
-            Button bupd = UI.MakeButton("Check for updates", 150, Color.FromArgb(60, 120, 140));
-            bupd.Location = new Point(260, 412);
+            Button bupd = UI.MakeButton(L.T("Check for updates", "التحقق من التحديثات", "Rechercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
+            bupd.Location = new Point(226, 446);
             bupd.Click += new EventHandler(OnCheckUpdate);
             Controls.Add(bupd);
 
-            Button ok = UI.MakeButton("Save", 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton("Cancel", 90, Color.FromArgb(70, 76, 110));
-            Button reset = UI.MakeButton("Reset to default", 150, Color.FromArgb(120, 96, 60));
-            ok.Location = new Point(236, 452);
-            cancel.Location = new Point(334, 452);
-            reset.Location = new Point(20, 452);
+            Button ok = UI.MakeButton(L.T("Save", "حفظ", "Enregistrer"), 90, Color.FromArgb(70, 90, 170));
+            Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
+            Button reset = UI.MakeButton(L.T("Reset to default", "استعادة الافتراضي", "Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
+            ok.Location = new Point(236, 486);
+            cancel.Location = new Point(334, 486);
+            reset.Location = new Point(20, 486);
             ok.Click += new EventHandler(OnSave);
             cancel.Click += new EventHandler(OnCancel);
             reset.Click += new EventHandler(OnReset);
@@ -2817,8 +3050,10 @@ namespace SuperCopyApp
             startupChecked = true;
             if (!ShellIntegration.IsInstalled())
             {
-                if (MessageBox.Show(this,
-                    "The Super Copy right-click menu is not installed.\n\nInstall it now?",
+                if (Msg.Show(this,
+                    L.T("The Super Copy right-click menu is not installed.\n\nInstall it now?",
+                        "قائمة النقر بزر الماوس الأيمن لـ Super Copy غير مثبتة.\n\nهل تريد تثبيتها الآن؟",
+                        "Le menu clic droit de Super Copy n'est pas installé.\n\nL'installer maintenant ?"),
                     "Super Copy", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
                     OnInstall(this, EventArgs.Empty);
@@ -2848,10 +3083,11 @@ namespace SuperCopyApp
         void RefreshState()
         {
             bool on = ShellIntegration.IsInstalled();
-            string os = Bitness.Is64Os ? "64-bit" : "32-bit";
+            string os = (Bitness.Is64Os ? L.T("64-bit", "64 بت", "64 bits") : L.T("32-bit", "32 بت", "32 bits")) +
+                        " " + L.T("Windows", "ويندوز", "Windows");
             lblState.Text = (on
-                ? "Status: installed (" + os + " Windows): Super Copy / Super Cut / Super Paste here"
-                : "Status: not installed (" + os + " Windows)");
+                ? L.T("Status: installed (", "الحالة: مثبتة (", "État : installé (") + os + ")"
+                : L.T("Status: not installed (", "الحالة: غير مثبتة (", "État : non installé (") + os + ")");
             lblState.ForeColor = on ? Theme.Green : Theme.Dim;
         }
 
@@ -2861,16 +3097,19 @@ namespace SuperCopyApp
             {
                 ShellIntegration.Install(Application.ExecutablePath);
                 RefreshState();
-                MessageBox.Show(this, "Done.\n\n1. Right-click files/folders > Super Copy / Super Cut (move) / Copy to dest...\n2. Right-click empty space inside a folder > Super Paste here",
+                Msg.Show(this, L.T(
+                    "Done.\n\n1. Right-click files/folders > Super Copy / Super Cut (move) / Copy to dest...\n2. Right-click empty space inside a folder > Super Paste here",
+                    "تم.\n\n1. انقر بزر الماوس الأيمن على الملفات/المجلدات > Super Copy / Super Cut (نقل) / Copy to dest...\n2. انقر بزر الماوس الأيمن على مساحة فارغة داخل مجلد > Super Paste here",
+                    "Terminé.\n\n1. Clic droit sur fichiers/dossiers > Super Copy / Super Cut (déplacer) / Copy to dest...\n2. Clic droit dans un espace vide d'un dossier > Super Paste here"),
                     "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception ex) { Msg.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
         void OnRemove(object s, EventArgs e)
         {
             try { ShellIntegration.Uninstall(); RefreshState(); }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception ex) { Msg.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
         void OnCheckUpdate(object s, EventArgs e) { Updates.Check(this); }
@@ -2880,12 +3119,15 @@ namespace SuperCopyApp
             string exe = Application.ExecutablePath;
             string created = "unknown";
             try { created = File.GetCreationTime(exe).ToString("yyyy-MM-dd HH:mm"); } catch { }
-            MessageBox.Show(this,
-                "Super Copy - version " + Updates.Current + "\n" +
-                "Lightweight multi-threaded file copier for Windows XP-11.\n\n" +
-                "Built: " + created + "\n" +
+            Msg.Show(this,
+                L.T("Super Copy - version ", "Super Copy - الإصدار ", "Super Copy - version ") + Updates.Current + "\n" +
+                L.T("Lightweight multi-threaded file copier for Windows XP-11.\n\n",
+                    "ناسخ ملفات خفيف متعدد الخيوط لويندوز XP-11.\n\n",
+                    "Copieur de fichiers léger et multi-thread pour Windows XP-11.\n\n") +
+                L.T("Built: ", "البناء: ", "Compilé : ") + created + "\n" +
                 "https://github.com/youcef07dz/super-copy",
-                "About Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                L.T("About Super Copy", "حول Super Copy", "À propos de Super Copy"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         void OnSave(object s, EventArgs e)
@@ -2896,6 +3138,8 @@ namespace SuperCopyApp
             Settings.Conflict = Math.Max(0, cmbConf.SelectedIndex);
             Settings.Engine = Math.Max(0, cmbEngine.SelectedIndex);
             Settings.AutoClose = chkClose.Checked;
+            Settings.Language = Math.Max(0, Math.Min(3, cmbLang.SelectedIndex));
+            L.Apply(Settings.Language);
             Settings.Save();
             DialogResult = DialogResult.OK;
             Close();
@@ -2924,6 +3168,7 @@ namespace SuperCopyApp
             cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
             cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
             chkClose.Checked = Settings.AutoClose;
+            cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
         }
     }
 
@@ -2943,7 +3188,7 @@ namespace SuperCopyApp
 
         public ConflictDialog(string dst)
         {
-            Text = "Super Copy - File exists";
+            Text = L.T("Super Copy - File exists", "Super Copy - الملف موجود", "Super Copy - Le fichier existe");
             Font = Theme.Cell;
             BackColor = Theme.Bg;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -2952,18 +3197,19 @@ namespace SuperCopyApp
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(400, 236);
+            L.ApplyRtl(this, true);
 
-            Controls.Add(MakeLabel("A file already exists in the destination:", 16, 14, Theme.Text));
+            Controls.Add(MakeLabel(L.T("A file already exists in the destination:", "يوجد ملف بهذا الاسم في الوجهة:", "Un fichier existe déjà dans la destination :"), 16, 14, Theme.Text));
             Label name = MakeLabel(Path.GetFileName(dst), 16, 36, Theme.Cyan);
             name.AutoSize = false;
             name.AutoEllipsis = true;
             name.SetBounds(16, 36, 368, 18);
             Controls.Add(name);
 
-            string[] cap = { "Overwrite the existing file",
-                             "Skip this file",
-                             "Keep both (rename the incoming file)",
-                             "Overwrite only if the source is newer" };
+            string[] cap = { L.T("Overwrite the existing file", "استبدال الملف الموجود", "Remplacer le fichier existant"),
+                             L.T("Skip this file", "تخطي هذا الملف", "Ignorer ce fichier"),
+                             L.T("Keep both (rename the incoming file)", "الاحتفاظ بالاثنين (إعادة تسمية الملف الوارد)", "Garder les deux (renommer le fichier entrant)"),
+                             L.T("Overwrite only if the source is newer", "استبدال فقط إذا كان المصدر أحدث", "Remplacer seulement si la source est plus récente") };
             for (int i = 0; i < cap.Length; i++)
             {
                 opts[i] = new RadioButton();
@@ -2977,15 +3223,15 @@ namespace SuperCopyApp
             opts[0].Checked = true;
 
             chkSession = new CheckBox();
-            chkSession.Text = "Do this for the rest of this session";
+            chkSession.Text = L.T("Do this for the rest of this session", "افعل ذلك لبقية هذه الجلسة", "Faire cela pour le reste de la session");
             chkSession.AutoSize = true;
             chkSession.ForeColor = Theme.Text;
             chkSession.BackColor = Theme.Bg;
             chkSession.Location = new Point(18, 168);
             Controls.Add(chkSession);
 
-            Button ok = UI.MakeButton("OK", 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton("Cancel", 90, Color.FromArgb(70, 76, 110));
+            Button ok = UI.MakeButton(L.T("OK", "موافق", "OK"), 90, Color.FromArgb(70, 90, 170));
+            Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
             ok.Location = new Point(196, 196);
             cancel.Location = new Point(294, 196);
             ok.Click += new EventHandler(OnOk);

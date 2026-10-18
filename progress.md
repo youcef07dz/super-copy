@@ -51,6 +51,12 @@
 ## Pending
 - User visual check: cascade on a single file / folder / 16+ multi-selection; "Super Paste here" on empty folder background; no entry on a drive root; plus Settings window, Robocopy, Error report popup, "Copy to dest..." picker, big-first order, drag & drop.
 
+- Localization: settings `Language` 0 auto (OS UI culture) / 1 English / 2 Arabic / 3 French; `L` class (`T(en,ar,fr)`, `Rtl`, `Left`/`Right`, `ApplyRtl`); all visible strings in MainForm, Settings, ConflictDialog, tray/Explorer verbs, Program/Updates messages; Settings language combo applies live (`MainForm.ApplyLanguage`).
+- Arabic RTL: form-level `RightToLeft` for standard controls; custom paint (HeaderPanel, TitleBar, progress bars, job strip, column headers) uses `L.Rtl`; list columns are physically reordered in RTL (`BuildColumns` + display→logical map) so File is the rightmost column like Explorer; bottom bar and header buttons mirrored.
+- Verified: build (v2.0.50727, now `/codepage:65001` in `build.cmd`) + `/selftest` exit 0; visual checks of Settings + MainForm in Arabic and English via `PrintWindow`.
+- Limits: `CopyJob.Summary` is built at job creation, so switching language mid-job leaves that label in the old language; native folder pickers follow the OS language, not the app setting.
+- README split into `README.md` / `README.ar.md` / `README.fr.md` with badge-style language buttons at the top; the Arabic file is wrapped in `<div dir="rtl">`.
+
 ## Known gaps (accepted)
 - `/todevice` silently no-ops if a SuperCopy GUI is already open (single-instance mutex path).
 - Two items can resolve to the same destination path (incl. `UniqueFile` race).

@@ -1,5 +1,11 @@
 <div align="center">
 
+<p>
+  <a href="README.md"><img height="30" src="https://img.shields.io/badge/English-2EA44F?style=for-the-badge" alt="English"></a>
+  <a href="README.ar.md"><img height="30" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-555?style=for-the-badge" alt="العربية"></a>
+  <a href="README.fr.md"><img height="30" src="https://img.shields.io/badge/Fran%C3%A7ais-555?style=for-the-badge" alt="Français"></a>
+</p>
+
 # 🚀 Super Copy
 
 **Lightweight, multi-threaded file copier for Windows XP → 11**<br>
@@ -15,7 +21,7 @@ with seamless Explorer right-click integration
 [![Downloads](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
 
 [**⬇ Download SuperCopy.exe**](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) ·
-[📖 Documentation](#-documentation) ·
+[📖 Documentation](#-features) ·
 [💬 Report Issue](https://github.com/youcef07dz/super-copy/issues) ·
 [⭐ Star Project](https://github.com/youcef07dz/super-copy/stargazers)
 
@@ -48,6 +54,7 @@ with seamless Explorer right-click integration
 | 📊 | **Smart ordering** | Big files first for better throughput |
 | 🛡 | **Safety** | Free-space check, move-verify (MD5) before deleting source |
 | 🎯 | **Convenience** | Drag & drop, compact mode, error report with copy-to-clipboard |
+| 🌍 | **Languages** | English, Arabic, French — or Auto (follows the Windows language); full RTL for Arabic |
 | 📦 | **Portable + safe** | Atomic I/O for settings/clipboard; uses HKCU for menu |
 
 ---

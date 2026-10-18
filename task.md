@@ -43,5 +43,6 @@
 - [x] AV false positives: replace auto-update download/swap with "open releases page" (remove dropper pattern); drop `ExeUrl`/`ApplyAndRestart`/`DelayedCopy`
 - [x] Add publisher metadata (`AssemblyCompany`/`Product`/`Copyright`)
 - [x] Draft AV false-positive reports (McAfee/SecureAge/Arctic Wolf)
+- [x] Localization: English/Arabic/French + Auto (OS UI culture) in Settings; full string coverage; Arabic RTL incl. mirrored list columns and custom-drawn header/bars; live apply after Save; build `/codepage:65001`; selftest exit 0
 - [ ] Code-sign the exe (needs a real Authenticode cert + signtool; self-signed does not help reputation)
 - [x] Installer experiment added then reverted (made AV worse: Program Files self-copy + HKLM + `MoveFileEx` + reflection/COM); back to portable per-user menu with `ShellIntegration.Install(exe)` (no `%APPDATA%` self-copy); `WriteIco`/`IcoFile`/`CheckLocal` removed; build + `/selftest` green
