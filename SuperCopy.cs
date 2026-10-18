@@ -2861,6 +2861,10 @@ namespace SuperCopyApp
             RefreshState();
 
             Controls.Add(MakeLabel("Version " + Updates.Current, 20, 418, Theme.Text));
+            Button babt = UI.MakeButton("About", 84, Color.FromArgb(90, 96, 130));
+            babt.Location = new Point(150, 412);
+            babt.Click += new EventHandler(OnAbout);
+            Controls.Add(babt);
             Button bupd = UI.MakeButton("Check for updates", 150, Color.FromArgb(60, 120, 140));
             bupd.Location = new Point(260, 412);
             bupd.Click += new EventHandler(OnCheckUpdate);
@@ -2952,6 +2956,19 @@ namespace SuperCopyApp
         }
 
         void OnCheckUpdate(object s, EventArgs e) { Updates.Check(this); }
+
+        void OnAbout(object s, EventArgs e)
+        {
+            string exe = Application.ExecutablePath;
+            string created = "unknown";
+            try { created = File.GetCreationTime(exe).ToString("yyyy-MM-dd HH:mm"); } catch { }
+            MessageBox.Show(this,
+                "Super Copy - version " + Updates.Current + "\n" +
+                "Lightweight multi-threaded file copier for Windows XP-11.\n\n" +
+                "Built: " + created + "\n" +
+                "https://github.com/youcef07dz/super-copy",
+                "About Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
 
         void OnSave(object s, EventArgs e)
         {
