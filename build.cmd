@@ -8,6 +8,10 @@ if exist "SuperCopy.ico" set "ICON=/win32icon:SuperCopy.ico"
 
 "%CSC%" /nologo /noconfig /target:winexe /optimize+ /debug- /warn:4 /codepage:65001 %LANG% %ICON%     /win32manifest:app.manifest     /out:SuperCopy.exe     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll SuperCopy.cs
 
+"%CSC%" /nologo /noconfig /target:winexe /optimize+ /debug- /warn:4 /codepage:65001 %LANG% %ICON%     /win32manifest:app.manifest     /out:SuperCopy-kimi.exe     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll SuperCopy-kimi.cs
+
+"%CSC%" /nologo /noconfig /target:winexe /optimize+ /debug- /warn:4 /codepage:65001 %LANG% %ICON%     /win32manifest:app.manifest     /out:SuperCopy-claud.exe     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll SuperCopy-claud.cs
+
 if errorlevel 1 (
     echo.
     echo  BUILD FAILED

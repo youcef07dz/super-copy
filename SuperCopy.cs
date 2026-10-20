@@ -39,7 +39,6 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
@@ -51,11 +50,11 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("1.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.0.0")]
 [assembly: System.Reflection.AssemblyTrademark("Super Copy")]
-// major part must mirror Updates.Current (v1 = 1.0.0.0); bump both + update.txt on release
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+// major part must mirror Updates.Current (v2 = 2.0.0.0); bump both + update.txt on release
+[assembly: System.Reflection.AssemblyVersion("2.0.0.0")]
 
 namespace SuperCopyApp
 {
@@ -279,6 +278,7 @@ namespace SuperCopyApp
         const int DefaultBufferKB = 256;
         const int DefaultConflict = 0;
         const int DefaultEngine = 0;
+        const bool DefaultVerify = true;
 
         public static volatile int Concurrency = DefaultConcurrency;   // simultaneous file copies (1..32) when smart disabled
         public static volatile bool SmartConcurrency = true;           // use file-size based concurrency (default)
@@ -287,6 +287,7 @@ namespace SuperCopyApp
         public static volatile int AskSession = -1;   // "ask first" answer kept for this run only (-1 = none yet)
         public static int AskPrompting;               // 1 while a worker owns the "ask first" dialog (Interlocked)
         public static volatile int Engine = DefaultEngine;             // 0 built-in, 1 robocopy
+        public static volatile bool Verify = DefaultVerify;            // hash source+destination after every copy/move
         public static bool RobocopyAvailable { get { try { return File.Exists(Path.Combine(Environment.SystemDirectory, "robocopy.exe")); } catch { return false; } } }
         public static bool AutoClose = false;
         public static bool Compact = false;           // start in compact (header-only) mode
@@ -313,6 +314,7 @@ namespace SuperCopyApp
                         case "bufferkb": if (int.TryParse(v, out n)) BufferKB = Clamp(n, 16, 16384); break;
                         case "conflict": if (int.TryParse(v, out n)) Conflict = Clamp(n, 0, 4); break;
                         case "engine": if (int.TryParse(v, out n)) Engine = Clamp(n, 0, 1); break;
+                        case "verify": Verify = (v == "1"); break;
                         case "autoclose": AutoClose = (v == "1"); break;
                         case "compact": Compact = (v == "1"); break;
                         case "language": if (int.TryParse(v, out n)) Language = Clamp(n, 0, 3); break;
@@ -332,6 +334,7 @@ namespace SuperCopyApp
                     "BufferKB=" + BufferKB,
                     "Conflict=" + Conflict,
                     "Engine=" + Engine,
+                    "Verify=" + (Verify ? "1" : "0"),
                     "AutoClose=" + (AutoClose ? "1" : "0"),
                     "Compact=" + (Compact ? "1" : "0"),
                     "Language=" + Language }, null);
@@ -348,6 +351,7 @@ namespace SuperCopyApp
             BufferKB = DefaultBufferKB;
             Conflict = DefaultConflict;
             Engine = DefaultEngine;
+            Verify = DefaultVerify;
             AutoClose = false;
             Language = 0;
         }
@@ -541,7 +545,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 1;   // must match AssemblyVersion's major part
+        public const int Current = 2;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
@@ -1216,21 +1220,227 @@ namespace SuperCopyApp
             try { return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(path))).AvailableFreeSpace; }
             catch { return -1; }
         }
-        static string HashFile(string path)
+        // XXH3-64 (xxHash3, default secret, seed 0). Portable scalar port of the reference
+        // implementation, so copy/move verification is fast enough to run on every file.
+        static class XXH3
         {
-            using (MD5 md5 = MD5.Create())
-            using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            const ulong P32_1 = 0x9E3779B1UL, P32_2 = 0x85EBCA77UL, P32_3 = 0xC2B2AE3DUL;
+            const ulong P64_1 = 0x9E3779B185EBCA87UL, P64_2 = 0xC2B2AE3D27D4EB4FUL;
+            const ulong P64_3 = 0x165667B19E3779F9UL, P64_4 = 0x85EBCA77C2B2AE63UL, P64_5 = 0x27D4EB2F165667C5UL;
+            const ulong MX1 = 0x165667919E3779F9UL, MX2 = 0x9FB21C651E98DF25UL;
+            const int SecretSize = 192, StripeLen = 64, ConsumeRate = 8, BlockLen = StripeLen * 16;
+
+            static readonly byte[] S = new byte[] {
+                0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
+                0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
+                0xcb, 0x79, 0xe6, 0x4e, 0xcc, 0xc0, 0xe5, 0x78, 0x82, 0x5a, 0xd0, 0x7d, 0xcc, 0xff, 0x72, 0x21,
+                0xb8, 0x08, 0x46, 0x74, 0xf7, 0x43, 0x24, 0x8e, 0xe0, 0x35, 0x90, 0xe6, 0x81, 0x3a, 0x26, 0x4c,
+                0x3c, 0x28, 0x52, 0xbb, 0x91, 0xc3, 0x00, 0xcb, 0x88, 0xd0, 0x65, 0x8b, 0x1b, 0x53, 0x2e, 0xa3,
+                0x71, 0x64, 0x48, 0x97, 0xa2, 0x0d, 0xf9, 0x4e, 0x38, 0x19, 0xef, 0x46, 0xa9, 0xde, 0xac, 0xd8,
+                0xa8, 0xfa, 0x76, 0x3f, 0xe3, 0x9c, 0x34, 0x3f, 0xf9, 0xdc, 0xbb, 0xc7, 0xc7, 0x0b, 0x4f, 0x1d,
+                0x8a, 0x51, 0xe0, 0x4b, 0xcd, 0xb4, 0x59, 0x31, 0xc8, 0x9f, 0x7e, 0xc9, 0xd9, 0x78, 0x73, 0x64,
+                0xea, 0xc5, 0xac, 0x83, 0x34, 0xd3, 0xeb, 0xc3, 0xc5, 0x81, 0xa0, 0xff, 0xfa, 0x13, 0x63, 0xeb,
+                0x17, 0x0d, 0xdd, 0x51, 0xb7, 0xf0, 0xda, 0x49, 0xd3, 0x16, 0x55, 0x26, 0x29, 0xd4, 0x68, 0x9e,
+                0x2b, 0x16, 0xbe, 0x58, 0x7d, 0x47, 0xa1, 0xfc, 0x8f, 0xf8, 0xb8, 0xd1, 0x7a, 0xd0, 0x31, 0xce,
+                0x45, 0xcb, 0x3a, 0x8f, 0x95, 0x16, 0x04, 0x28, 0xaf, 0xd7, 0xfb, 0xca, 0xbb, 0x4b, 0x40, 0x7e };
+
+            static readonly ulong[] InitAcc = new ulong[] { P32_3, P64_1, P64_2, P64_3, P64_4, P32_2, P64_5, P32_1 };
+
+            public static ulong HashFile(string path)
             {
-                byte[] h = md5.ComputeHash(fs);
-                StringBuilder sb = new StringBuilder(h.Length * 2);
-                for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
-                return sb.ToString();
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan))
+                {
+                    long len = fs.Length;
+                    if (len <= 240)
+                    {
+                        byte[] small = new byte[(int)len];
+                        ReadFull(fs, small, 0, small.Length);
+                        return HashShort(small, small.Length);
+                    }
+
+                    ulong[] acc = (ulong[])InitAcc.Clone();
+                    byte[] block = new byte[BlockLen];
+                    long blocks = (len - 1) / BlockLen;
+                    for (long b = 0; b < blocks; b++)
+                    {
+                        ReadFull(fs, block, 0, BlockLen);
+                        Accumulate(acc, block, 0, BlockLen / StripeLen);
+                        Scramble(acc, SecretSize - StripeLen);
+                    }
+                    int stripes = (int)(((len - 1) - blocks * BlockLen) / StripeLen);
+                    if (stripes > 0)
+                    {
+                        ReadFull(fs, block, 0, stripes * StripeLen);
+                        Accumulate(acc, block, 0, stripes);
+                    }
+                    byte[] last = new byte[StripeLen];
+                    fs.Seek(len - StripeLen, SeekOrigin.Begin);
+                    ReadFull(fs, last, 0, StripeLen);
+                    Accumulate512(acc, last, 0, SecretSize - StripeLen - 7);
+                    return Merge(acc, 11, (ulong)len * P64_1);
+                }
+            }
+
+            public static ulong HashShort(byte[] d, int len)
+            {
+                if (len <= 16) return Len0to16(d, len);
+                if (len <= 128) return Len17to128(d, len);
+                return Len129to240(d, len);
+            }
+
+            static ulong Len0to16(byte[] d, int len)
+            {
+                if (len > 8)
+                {
+                    ulong lo = Read64(d, 0) ^ (Read64(S, 24) ^ Read64(S, 32));
+                    ulong hi = Read64(d, len - 8) ^ (Read64(S, 40) ^ Read64(S, 48));
+                    return Avalanche((ulong)len + Swap64(lo) + hi + Mul128Fold64(lo, hi));
+                }
+                if (len >= 4)
+                {
+                    ulong input = Read32(d, len - 4) + ((ulong)Read32(d, 0) << 32);
+                    ulong keyed = input ^ (Read64(S, 8) ^ Read64(S, 16));
+                    return Rrmxmx(keyed, (ulong)len);
+                }
+                if (len > 0)
+                {
+                    uint combined = ((uint)d[0] << 16) | ((uint)d[len >> 1] << 24) | d[len - 1] | ((uint)len << 8);
+                    return XXH64Avalanche((ulong)combined ^ ((ulong)Read32(S, 0) ^ Read32(S, 4)));
+                }
+                return XXH64Avalanche(Read64(S, 56) ^ Read64(S, 64));
+            }
+
+            static ulong Mix16(byte[] d, int i, int s)
+            {
+                return Mul128Fold64(Read64(d, i) ^ Read64(S, s), Read64(d, i + 8) ^ Read64(S, s + 8));
+            }
+
+            static ulong Len17to128(byte[] d, int len)
+            {
+                ulong acc = (ulong)len * P64_1;
+                if (len > 32)
+                {
+                    if (len > 64)
+                    {
+                        if (len > 96)
+                        {
+                            acc += Mix16(d, 48, 96);
+                            acc += Mix16(d, len - 64, 112);
+                        }
+                        acc += Mix16(d, 32, 64);
+                        acc += Mix16(d, len - 48, 80);
+                    }
+                    acc += Mix16(d, 16, 32);
+                    acc += Mix16(d, len - 32, 48);
+                }
+                acc += Mix16(d, 0, 0);
+                acc += Mix16(d, len - 16, 16);
+                return Avalanche(acc);
+            }
+
+            static ulong Len129to240(byte[] d, int len)
+            {
+                ulong acc = (ulong)len * P64_1;
+                int rounds = len / 16;
+                for (int i = 0; i < 8; i++) acc += Mix16(d, 16 * i, 16 * i);
+                ulong accEnd = Mix16(d, len - 16, 136 - 17);
+                acc = Avalanche(acc);
+                for (int i = 8; i < rounds; i++) accEnd += Mix16(d, 16 * i, 16 * (i - 8) + 3);
+                return Avalanche(acc + accEnd);
+            }
+
+            static void Accumulate(ulong[] acc, byte[] input, int inputOff, int stripes)
+            {
+                for (int n = 0; n < stripes; n++)
+                    Accumulate512(acc, input, inputOff + n * StripeLen, n * ConsumeRate);
+            }
+
+            static void Accumulate512(ulong[] acc, byte[] input, int inputOff, int secretOff)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    ulong val = Read64(input, inputOff + i * 8);
+                    ulong key = val ^ Read64(S, secretOff + i * 8);
+                    acc[i ^ 1] += val;
+                    acc[i] += (ulong)(uint)key * (ulong)(uint)(key >> 32);
+                }
+            }
+
+            static void Scramble(ulong[] acc, int secretOff)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    ulong a = XorShift(acc[i], 47) ^ Read64(S, secretOff + i * 8);
+                    acc[i] = a * P32_1;
+                }
+            }
+
+            static ulong Merge(ulong[] acc, int secretOff, ulong start)
+            {
+                ulong r = start;
+                for (int i = 0; i < 4; i++)
+                    r += Mul128Fold64(acc[2 * i] ^ Read64(S, secretOff + 16 * i),
+                                      acc[2 * i + 1] ^ Read64(S, secretOff + 16 * i + 8));
+                return Avalanche(r);
+            }
+
+            static ulong Mul128Fold64(ulong a, ulong b)
+            {
+                ulong aLo = a & 0xFFFFFFFFUL, aHi = a >> 32, bLo = b & 0xFFFFFFFFUL, bHi = b >> 32;
+                ulong lo = aLo * bLo;
+                ulong mid = (lo >> 32) + (aLo * bHi & 0xFFFFFFFFUL) + (aHi * bLo & 0xFFFFFFFFUL);
+                ulong low = (lo & 0xFFFFFFFFUL) | (mid << 32);
+                ulong high = aHi * bHi + (aLo * bHi >> 32) + (aHi * bLo >> 32) + (mid >> 32);
+                return low ^ high;
+            }
+
+            static ulong Avalanche(ulong h) { h = XorShift(h, 37); h *= MX1; return XorShift(h, 32); }
+            static ulong Rrmxmx(ulong h, ulong len)
+            {
+                h ^= Rotl64(h, 49) ^ Rotl64(h, 24);
+                h *= MX2;
+                h ^= (h >> 35) + len;
+                h *= MX2;
+                return XorShift(h, 28);
+            }
+            static ulong XXH64Avalanche(ulong h)
+            {
+                h ^= h >> 33; h *= P64_2; h ^= h >> 29; h *= P64_3; h ^= h >> 32;
+                return h;
+            }
+            static ulong XorShift(ulong v, int s) { return v ^ (v >> s); }
+            static ulong Rotl64(ulong v, int r) { return (v << r) | (v >> (64 - r)); }
+            static ulong Swap64(ulong x)
+            {
+                return ((x & 0x00000000000000FFUL) << 56) | ((x & 0x000000000000FF00UL) << 40) |
+                       ((x & 0x0000000000FF0000UL) << 24) | ((x & 0x00000000FF000000UL) << 8) |
+                       ((x & 0x000000FF00000000UL) >> 8) | ((x & 0x0000FF0000000000UL) >> 24) |
+                       ((x & 0x00FF000000000000UL) >> 40) | ((x & 0xFF00000000000000UL) >> 56);
+            }
+            static ulong Read64(byte[] b, int i)
+            {
+                return (ulong)b[i] | ((ulong)b[i + 1] << 8) | ((ulong)b[i + 2] << 16) | ((ulong)b[i + 3] << 24) |
+                       ((ulong)b[i + 4] << 32) | ((ulong)b[i + 5] << 40) | ((ulong)b[i + 6] << 48) | ((ulong)b[i + 7] << 56);
+            }
+            static uint Read32(byte[] b, int i)
+            {
+                return (uint)b[i] | ((uint)b[i + 1] << 8) | ((uint)b[i + 2] << 16) | ((uint)b[i + 3] << 24);
+            }
+            static void ReadFull(Stream s, byte[] b, int off, int n)
+            {
+                while (n > 0)
+                {
+                    int r = s.Read(b, off, n);
+                    if (r <= 0) throw new EndOfStreamException();
+                    off += r; n -= r;
+                }
             }
         }
+
         // false on any read error: the safe direction (never delete the source on doubt)
         static bool SameHash(string a, string b)
         {
-            try { return HashFile(a) == HashFile(b); }
+            try { return XXH3.HashFile(a) == XXH3.HashFile(b); }
             catch { return false; }
         }
 
@@ -1334,6 +1544,36 @@ namespace SuperCopyApp
                 if (FreeSpace("\0") != -1) return 9;
             }
             finally { try { File.Delete(f1); } catch { } try { File.Delete(f2); } catch { } }
+
+            // XXH3-64 known-answer vectors (reference xxhash.h scalar build)
+            byte[] abc = new byte[] { (byte)'a', (byte)'b', (byte)'c' };
+            if (XXH3.HashShort(new byte[0], 0) != 0x2D06800538D394C2UL) return 22;
+            if (XXH3.HashShort(abc, 3) != 0x78AF5F94892F3950UL) return 24;
+            byte[] v240 = new byte[240];
+            for (int i = 0; i < v240.Length; i++) v240[i] = (byte)(i * 7 + 3);
+            if (XXH3.HashShort(v240, 16) != 0xB8C859B0F030B585UL) return 26;
+            if (XXH3.HashShort(v240, 17) != 0x714A04408E79B80FUL) return 27;
+            if (XXH3.HashShort(v240, 128) != 0x67425A03650261BFUL) return 28;
+            if (XXH3.HashShort(v240, 240) != 0x64556DC6B462A6CFUL) return 25;
+
+            // long path (>240 bytes) and its 1024-byte block boundary, through HashFile
+            string hf = Path.Combine(Path.GetTempPath(), "sc_selftest_xxh3.bin");
+            byte[] v = new byte[3000];
+            for (int i = 0; i < v.Length; i++) v[i] = (byte)(i * 7 + 3);
+            int[] lens = new int[] { 241, 1024, 1025, 3000 };
+            ulong[] want = new ulong[] { 0x8BEADD3A8874FE17UL, 0x9B81661C641C72B1UL,
+                                         0x806C2072ED713576UL, 0xC89178BB873C6B3DUL };
+            try
+            {
+                for (int i = 0; i < lens.Length; i++)
+                {
+                    byte[] part = new byte[lens[i]];
+                    Array.Copy(v, part, part.Length);
+                    File.WriteAllBytes(hf, part);
+                    if (XXH3.HashFile(hf) != want[i]) return 23;
+                }
+            }
+            finally { try { File.Delete(hf); } catch { } }
 
             // big-first ordering: scan must leave items sorted by Size descending
             string sd = Path.Combine(Path.GetTempPath(), "sc_selftest_sort");
@@ -1678,6 +1918,18 @@ namespace SuperCopyApp
                 it.State = 5;
                 return;
             }
+            // hash both files before deleting the backup or the source: a bad transfer can
+            // never destroy the only good copy, and copies are verified too, not just moves
+            if (Settings.Verify && !SameHash(dst, src))
+            {
+                try { File.Delete(dst); } catch { }
+                if (bak != null) { try { File.Move(bak, dst); } catch { } }
+                it.Error = "XXH3 checksum mismatch - source kept";
+                LastError = it.Name + ": " + it.Error;
+                it.State = 3;
+                Interlocked.Increment(ref Errors);
+                return;
+            }
             if (bak != null) { try { File.Delete(bak); } catch { } }
 
             long d = Interlocked.Read(ref it.Done);
@@ -1693,15 +1945,6 @@ namespace SuperCopyApp
 
             if (Move)
             {
-                // shortcut: re-reads both files to compare; switch to hash-as-you-copy if large-file move speed matters
-                if (!SameHash(dst, src))
-                {
-                    it.Error = "Checksum mismatch - source kept";
-                    LastError = it.Name + ": " + it.Error;
-                    it.State = 3;
-                    Interlocked.Increment(ref Errors);
-                    return;
-                }
                 try { File.SetAttributes(src, FileAttributes.Normal); File.Delete(src); }
                 catch (Exception ex)
                 {
@@ -2887,7 +3130,7 @@ namespace SuperCopyApp
         NumericUpDown numConc;
         CheckBox chkSmartConc;
         ComboBox cmbBuf, cmbConf, cmbEngine, cmbLang;
-        CheckBox chkClose;
+        CheckBox chkClose, chkVerify;
         Label lblState;
         bool startupChecked;   // startup install/update suggestion runs once per window
         static readonly int[] BufSizes = new int[] { 64, 256, 1024, 4096 };
@@ -2911,7 +3154,7 @@ namespace SuperCopyApp
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 522);
+            ClientSize = new Size(430, 548);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
             L.ApplyRtl(this, true);
@@ -3006,38 +3249,49 @@ namespace SuperCopyApp
             chkClose.Location = new Point(20, 294);
             Controls.Add(chkClose);
 
-            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 334, Theme.Cyan));
+            chkVerify = new CheckBox();
+            chkVerify.Text = L.T("Verify copies and moves with XXH3",
+                                 "التحقق من النسخ والنقل باستخدام XXH3",
+                                 "Vérifier les copies et déplacements avec XXH3");
+            chkVerify.AutoSize = true;
+            chkVerify.ForeColor = Theme.Text;
+            chkVerify.BackColor = Theme.Bg;
+            chkVerify.Checked = Settings.Verify;
+            chkVerify.Location = new Point(20, 320);
+            Controls.Add(chkVerify);
+
+            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 360, Theme.Cyan));
             Button bi2 = UI.MakeButton(L.T("Install menu", "تثبيت القائمة", "Installer le menu"), 180, Color.FromArgb(40, 150, 100));
             Button br = UI.MakeButton(L.T("Remove menu", "إزالة القائمة", "Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
-            bi2.Location = new Point(20, 356);
-            br.Location = new Point(220, 356);
+            bi2.Location = new Point(20, 382);
+            br.Location = new Point(220, 382);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
             Controls.Add(bi2);
             Controls.Add(br);
-            lblState = MakeLabel("", 20, 394, Theme.Dim);
+            lblState = MakeLabel("", 20, 420, Theme.Dim);
             Controls.Add(lblState);
             Controls.Add(MakeLabel(L.T("Windows 11: entries are under \"Show more options\" (Shift+F10).",
                                        "ويندوز 11: تظهر الإدخالات تحت \"إظهار المزيد من الخيارات\" (Shift+F10).",
-                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 414, Theme.Dim));
+                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 440, Theme.Dim));
             RefreshState();
 
-            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 452, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 478, Theme.Text));
             Button babt = UI.MakeButton(L.T("About", "حول", "À propos"), 84, Color.FromArgb(90, 96, 130));
-            babt.Location = new Point(132, 446);
+            babt.Location = new Point(132, 472);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
             Button bupd = UI.MakeButton(L.T("Check for updates", "التحقق من التحديثات", "Rechercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
-            bupd.Location = new Point(226, 446);
+            bupd.Location = new Point(226, 472);
             bupd.Click += new EventHandler(OnCheckUpdate);
             Controls.Add(bupd);
 
             Button ok = UI.MakeButton(L.T("Save", "حفظ", "Enregistrer"), 90, Color.FromArgb(70, 90, 170));
             Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
             Button reset = UI.MakeButton(L.T("Reset to default", "استعادة الافتراضي", "Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
-            ok.Location = new Point(236, 486);
-            cancel.Location = new Point(334, 486);
-            reset.Location = new Point(20, 486);
+            ok.Location = new Point(236, 512);
+            cancel.Location = new Point(334, 512);
+            reset.Location = new Point(20, 512);
             ok.Click += new EventHandler(OnSave);
             cancel.Click += new EventHandler(OnCancel);
             reset.Click += new EventHandler(OnReset);
@@ -3125,6 +3379,7 @@ namespace SuperCopyApp
             Settings.BufferKB = BufSizes[Math.Max(0, cmbBuf.SelectedIndex)];
             Settings.Conflict = Math.Max(0, cmbConf.SelectedIndex);
             Settings.Engine = Math.Max(0, cmbEngine.SelectedIndex);
+            Settings.Verify = chkVerify.Checked;
             Settings.AutoClose = chkClose.Checked;
             Settings.Language = Math.Max(0, Math.Min(3, cmbLang.SelectedIndex));
             L.Apply(Settings.Language);
@@ -3160,6 +3415,7 @@ namespace SuperCopyApp
             cmbBuf.SelectedIndex = bi;
             cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
             cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
+            chkVerify.Checked = Settings.Verify;
             chkClose.Checked = Settings.AutoClose;
             cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
         }

@@ -1,35 +1,42 @@
 <div align="center">
 
 <p>
-  <a href="README.md"><img height="30" src="https://img.shields.io/badge/English-555?style=for-the-badge" alt="English"></a>
-  <a href="README.ar.md"><img height="30" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-555?style=for-the-badge" alt="العربية"></a>
-  <a href="README.fr.md"><img height="30" src="https://img.shields.io/badge/Fran%C3%A7ais-8957E5?style=for-the-badge" alt="Français"></a>
+  <a href="README.md"><img height="28" src="https://img.shields.io/badge/English-555?style=for-the-badge" alt="English"></a>
+  <a href="README.ar.md"><img height="28" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-555?style=for-the-badge" alt="العربية"></a>
+  <a href="README.fr.md"><img height="28" src="https://img.shields.io/badge/Fran%C3%A7ais-8957E5?style=for-the-badge" alt="Français"></a>
 </p>
+
+## ⚡ Projet généré avec l'outil [opencode](https://github.com/anomalyco/opencode) CLI
+
+**Modèles gratuits : Big Pickle et DeepSeek V4**
 
 # 🚀 Super Copy
 
 **Copieur de fichiers léger et multi-thread pour Windows XP → 11**<br>
 avec une intégration transparente au menu contextuel de l'Explorateur
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
+[![Version 2.0](https://img.shields.io/badge/version-2.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Plateforme : Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![Portable](https://img.shields.io/badge/Type-Portable-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![No Installer](https://img.shields.io/badge/Installer-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![Admin Rights](https://img.shields.io/badge/Admin%20Rights-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![Stars](https://img.shields.io/github/stars/youcef07dz/super-copy?style=flat-square&logo=github&color=yellow)](https://github.com/youcef07dz/super-copy/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
+[![Étoiles](https://img.shields.io/github/stars/youcef07dz/super-copy?style=flat-square&logo=github&color=yellow)](https://github.com/youcef07dz/super-copy/stargazers)
+[![Téléchargements](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
 
 [**⬇ Télécharger SuperCopy.exe**](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) ·
-[📖 Documentation](#-fonctionnalités) ·
+[📖 Fonctionnalités](#-fonctionnalités) ·
 [💬 Signaler un problème](https://github.com/youcef07dz/super-copy/issues) ·
 [⭐ Mettre une étoile](https://github.com/youcef07dz/super-copy/stargazers)
 
 </div>
 
+> [!TIP]
+> **Nouveau dans la v2 :** chaque copie et chaque déplacement est vérifié avec **XXH3-64**. En cas d'écart, la copie défectueuse est supprimée, le fichier écrasé est restauré et la source est conservée.
+
 ---
 
-## 📑 Table des matières
+<details>
+<summary><b>📑 Table des matières</b></summary>
 
 - [✨ Fonctionnalités](#-fonctionnalités)
 - [⚡ Démarrage rapide](#-démarrage-rapide)
@@ -38,36 +45,35 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 - [🛠 Compilation](#-compilation)
 - [📷 Captures d'écran](#-captures-décran)
 - [📝 Notes](#-notes)
+- [🗂 Historique](#-historique)
 - [🤝 Contribuer](#-contribuer)
 - [📄 Licence](#-licence)
+
+</details>
 
 ---
 
 ## ✨ Fonctionnalités
 
-|  | Fonctionnalité | Description |
-|:---:|---|---|
-| ⚡ | **Rapide** | Copie multi-thread avec concurrence intelligente, ajustée selon la taille des fichiers |
-| 🖱 | **Intégration à l'Explorateur** | Verbes du menu contextuel (Copier, Couper/déplacer, Copier vers…) + *Coller ici* sur le fond de dossier |
-| 🔧 | **Moteurs** | Moteur intégré ou Windows Robocopy en option |
-| ⚖ | **Conflits** | Remplacer · Ignorer · Garder les deux (renommer) · Remplacer si plus récent · Demander d'abord |
-| 📊 | **Ordre intelligent** | Fichiers volumineux d'abord pour un meilleur débit |
-| 🛡 | **Sécurité** | Vérification de l'espace libre, vérification MD5 avant suppression de la source |
-| 🎯 | **Confort** | Glisser-déposer, mode compact, rapport d'erreurs avec copie dans le presse-papiers |
-| 🌍 | **Langues** | Anglais, arabe, français — ou Auto (suit la langue de Windows) ; RTL complet pour l'arabe |
-| 📦 | **Portable + sûr** | E/S atomiques pour les réglages/presse-papiers ; menu via HKCU |
+- ⚡ **Rapide** — copie multi-thread avec concurrence intelligente, ajustée selon la taille des fichiers.
+- 🖱 **Intégration à l'Explorateur** — clic droit Copier, Couper/déplacer, Copier vers… plus **Coller ici** sur le fond d'un dossier.
+- 🔧 **Deux moteurs** — copieur intégré ou Windows Robocopy en option.
+- ⚖ **Gestion des conflits** — remplacer, ignorer, garder les deux (renommer), remplacer si plus récent, ou demander d'abord.
+- 📊 **Ordre intelligent** — fichiers volumineux d'abord pour un meilleur débit.
+- 🛡 **Sécurité vérifiée** — contrôle XXH3-64 à chaque copie/déplacement, vérification de l'espace libre, sauvegarde/restauration en cas d'écrasement.
+- 🎯 **Confort** — glisser-déposer, mode compact, rapport d'erreurs avec copie dans le presse-papiers.
+- 🌍 **Langues** — anglais, arabe, français ou Auto (suit Windows) ; RTL complet pour l'arabe.
+- 📦 **Portable** — un seul fichier, sans installateur ni droits admin ; réglages et presse-papiers écrits de façon atomique.
 
 ---
 
 ## ⚡ Démarrage rapide
 
-```
-1. Télécharger     →  SuperCopy.exe (fichier portable unique, sans installateur)
-2. Lancer une fois →  Ouvre le panneau Réglages
-3. Installer menu  →  Cliquez sur « Installer le menu » (ou lancez /install)
-4. Clic droit      →  Fichiers/dossiers → Super Copy > Copier / Couper / Copier vers...
-5. Coller ici      →  Clic droit dans un espace vide d'un dossier → Coller ici
-```
+1. **Téléchargez** [`SuperCopy.exe`](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) — un fichier portable, sans installateur.
+2. **Lancez-le une fois** — la fenêtre Réglages s'ouvre.
+3. **Installez le menu** — cliquez sur **Installer le menu** (ou lancez `SuperCopy.exe /install`).
+4. **Clic droit** sur un fichier ou un dossier → **Super Copy** → Copier / Couper / Copier vers…
+5. **Collez** — clic droit dans un espace vide d'un dossier → **Coller ici**.
 
 > [!TIP]
 > Aucun droit administrateur requis — le menu est installé pour l'utilisateur courant dans `HKEY_CURRENT_USER`.
@@ -76,20 +82,28 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 
 ## 📥 Téléchargement
 
-<table>
-  <tr>
-    <td align="center" width="100%">
-      <h3>🎯 Téléchargement direct</h3>
-      <p><b>SuperCopy.exe</b> — fichier portable unique</p>
-      <a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
-        <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="Télécharger SuperCopy.exe">
-      </a>
-      <p><sub>Sans installateur · Sans droits admin · Il suffit de le lancer</sub></p>
-    </td>
-  </tr>
-</table>
+<div align="center">
 
-**SHA-256 :** `9890A541A4DCC5BBE4DD753135B648F06E77CAEB7D7797946A0396FA1B1F83BB`
+### 🎯 Téléchargement direct
+
+**SuperCopy.exe** — un fichier portable
+
+<a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
+  <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="Télécharger SuperCopy.exe">
+</a>
+
+<sub>Sans installateur · Sans droits admin · Il suffit de le lancer</sub>
+
+</div>
+
+<details>
+<summary><b>Somme SHA-256</b></summary>
+
+```text
+CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
+```
+
+</details>
 
 ---
 
@@ -98,16 +112,14 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 > [!NOTE]
 > `SuperCopy.exe` accepte les arguments suivants :
 
-| Commande | Action |
-|---|---|
-| `SuperCopy.exe` | Ouvrir les Réglages |
-| `SuperCopy.exe /install` | Ajouter les entrées du menu contextuel |
-| `SuperCopy.exe /uninstall` | Supprimer les entrées du menu contextuel |
-| `SuperCopy.exe /copy <chemins...>` | Mémoriser des éléments à copier |
-| `SuperCopy.exe /cut <chemins...>` | Mémoriser des éléments à déplacer |
-| `SuperCopy.exe /paste <dossier>` | Copier/déplacer les éléments mémorisés ici |
-| `SuperCopy.exe /todevice` | Copier les éléments sélectionnés vers le dossier choisi |
-| `SuperCopy.exe /selftest` | Lancer l'auto-vérification (code 0 si OK) |
+- **`SuperCopy.exe`** — ouvrir les Réglages.
+- **`SuperCopy.exe /install`** — ajouter les entrées du menu contextuel.
+- **`SuperCopy.exe /uninstall`** — supprimer les entrées du menu contextuel.
+- **`SuperCopy.exe /copy <chemins...>`** — mémoriser des éléments à copier.
+- **`SuperCopy.exe /cut <chemins...>`** — mémoriser des éléments à déplacer.
+- **`SuperCopy.exe /paste <dossier>`** — copier/déplacer les éléments mémorisés ici.
+- **`SuperCopy.exe /todevice`** — copier les éléments sélectionnés vers le dossier choisi.
+- **`SuperCopy.exe /selftest`** — lancer l'auto-vérification (code 0 si OK).
 
 ### Exemples
 
@@ -129,9 +141,7 @@ SuperCopy.exe /selftest
 
 ## 🛠 Compilation
 
-```bash
-build.cmd
-```
+Lancez `build.cmd` depuis la racine du dépôt.
 
 > [!NOTE]
 > Utilise le **`csc.exe` de .NET Framework 3.5** (dossier `v3.5`) avec un **`app.manifest`** explicite `asInvoker` (aucune demande d'élévation). Intègre `SuperCopy.ico` et produit `SuperCopy.exe` à la racine du dépôt.
@@ -147,13 +157,17 @@ build.cmd
 
 ## 📷 Captures d'écran
 
-<div align="center">
+### Fenêtre principale
 
-| Fenêtre principale | Mode compact | Réglages |
-|:---:|:---:|:---:|
-| ![Fenêtre principale](screenshot/sc2.png) | ![Mode compact](screenshot/sc3.png) | ![Réglages](screenshot/sc1.png) |
+![Fenêtre principale](screenshot/sc2.png)
 
-</div>
+### Mode compact
+
+![Mode compact](screenshot/sc3.png)
+
+### Réglages
+
+![Réglages](screenshot/sc1.png)
 
 ---
 
@@ -166,7 +180,13 @@ build.cmd
 > **Stockage des réglages** : dans `%APPDATA%\SuperCopy\settings.ini`.
 
 > [!TIP]
-> **Installation du menu** : requiert `/install` (ou le bouton *Installer le menu* dans les Réglages). **Aucun droit administrateur requis.**
+> **Installation du menu** : requiert `/install` (ou le bouton **Installer le menu** dans les Réglages). **Aucun droit administrateur requis.**
+
+---
+
+## 🗂 Historique
+
+Nouveautés de la v2 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire de la v1 sont archivés dans [`old/v1`](old/v1).
 
 ---
 
@@ -174,18 +194,18 @@ build.cmd
 
 Les contributions sont les bienvenues ! Voici comment aider :
 
-1. 🍴 **Forkez** le dépôt
-2. 🌿 **Créez** une branche de fonctionnalité (`git checkout -b feature/ma-fonctionnalite`)
-3. 💾 **Validez** vos changements (`git commit -m 'Ajouter une fonctionnalité'`)
-4. 📤 **Poussez** vers la branche (`git push origin feature/ma-fonctionnalite`)
-5. 🔄 **Ouvrez** une Pull Request
+1. 🍴 **Forkez** le dépôt.
+2. 🌿 **Créez** une branche de fonctionnalité (`git checkout -b feature/ma-fonctionnalite`).
+3. 💾 **Validez** vos changements (`git commit -m 'Ajouter une fonctionnalité'`).
+4. 📤 **Poussez** vers la branche (`git push origin feature/ma-fonctionnalite`).
+5. 🔄 **Ouvrez** une Pull Request.
 
 ### Façons de contribuer
 
-- 🐛 [Signaler des bugs](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — aidez-nous à améliorer la stabilité
-- 💡 [Proposer des fonctionnalités](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — partagez vos idées
-- ⭐ [Mettre une étoile](https://github.com/youcef07dz/super-copy/stargazers) — montrez votre soutien
-- 📢 Partager avec les autres — faites passer le mot
+- 🐛 [Signaler des bugs](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — aidez-nous à améliorer la stabilité.
+- 💡 [Proposer des fonctionnalités](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — partagez vos idées.
+- ⭐ [Mettre une étoile](https://github.com/youcef07dz/super-copy/stargazers) — montrez votre soutien.
+- 📢 Partager avec les autres — faites passer le mot.
 
 ---
 
@@ -195,9 +215,7 @@ Ce projet est sous licence **MIT** — voir le fichier [LICENSE](LICENSE) pour l
 
 <div align="center">
 
-```
-MIT License — utilisation personnelle et commerciale gratuite
-```
+**MIT License — utilisation personnelle et commerciale gratuite**
 
 Fait avec ❤ par [**@youcef07dz**](https://github.com/youcef07dz)
 

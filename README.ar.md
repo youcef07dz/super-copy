@@ -3,35 +3,42 @@
 <div align="center">
 
 <p>
-  <a href="README.md"><img height="30" src="https://img.shields.io/badge/English-555?style=for-the-badge" alt="English"></a>
-  <a href="README.ar.md"><img height="30" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-1F6FEB?style=for-the-badge" alt="العربية"></a>
-  <a href="README.fr.md"><img height="30" src="https://img.shields.io/badge/Fran%C3%A7ais-555?style=for-the-badge" alt="Français"></a>
+  <a href="README.md"><img height="28" src="https://img.shields.io/badge/English-555?style=for-the-badge" alt="English"></a>
+  <a href="README.ar.md"><img height="28" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-1F6FEB?style=for-the-badge" alt="العربية"></a>
+  <a href="README.fr.md"><img height="28" src="https://img.shields.io/badge/Fran%C3%A7ais-555?style=for-the-badge" alt="Français"></a>
 </p>
+
+## ⚡ أُنشئ هذا المشروع باستخدام [opencode](https://github.com/anomalyco/opencode) CLI
+
+**نماذج مجانية: Big Pickle وDeepSeek V4**
 
 # 🚀 Super Copy
 
 **ناسخ ملفات خفيف متعدد الخيوط لويندوز XP → 11**<br>
 مع تكامل سلس في قائمة النقر بزر الماوس الأيمن في المستكشف
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
+[![الإصدار 2.0](https://img.shields.io/badge/version-2.0-2EA44F?style=flat-square)](HISTORY.md)
+[![الترخيص: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![المنصة: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
-[![Portable](https://img.shields.io/badge/Type-Portable-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![No Installer](https://img.shields.io/badge/Installer-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![Admin Rights](https://img.shields.io/badge/Admin%20Rights-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![Stars](https://img.shields.io/github/stars/youcef07dz/super-copy?style=flat-square&logo=github&color=yellow)](https://github.com/youcef07dz/super-copy/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
+[![محمول](https://img.shields.io/badge/Type-Portable-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
+[![النجوم](https://img.shields.io/github/stars/youcef07dz/super-copy?style=flat-square&logo=github&color=yellow)](https://github.com/youcef07dz/super-copy/stargazers)
+[![التنزيلات](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
 
 [**⬇ تنزيل SuperCopy.exe**](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) ·
-[📖 التوثيق](#-المزايا) ·
+[📖 المزايا](#-المزايا) ·
 [💬 الإبلاغ عن مشكلة](https://github.com/youcef07dz/super-copy/issues) ·
 [⭐ إضافة نجمة](https://github.com/youcef07dz/super-copy/stargazers)
 
 </div>
 
+> [!TIP]
+> **جديد في v2:** يتم التحقق من كل عملية نسخ أو نقل باستخدام **XXH3-64**. عند عدم التطابق يُحذف النسخ التالف، وتُستعاد النسخة التي تم استبدالها، ويبقى المصدر سليماً.
+
 ---
 
-## 📑 جدول المحتويات
+<details>
+<summary><b>📑 جدول المحتويات</b></summary>
 
 - [✨ المزايا](#-المزايا)
 - [⚡ بدء سريع](#-بدء-سريع)
@@ -40,36 +47,35 @@
 - [🛠 البناء](#-البناء)
 - [📷 لقطات الشاشة](#-لقطات-الشاشة)
 - [📝 ملاحظات](#-ملاحظات)
+- [🗂 السجل](#-السجل)
 - [🤝 المساهمة](#-المساهمة)
 - [📄 الترخيص](#-الترخيص)
+
+</details>
 
 ---
 
 ## ✨ المزايا
 
-|  | الميزة | الوصف |
-|:---:|---|---|
-| ⚡ | **سريع** | نسخ متعدد الخيوط مع تزامن ذكي يُضبط تلقائياً حسب حجم الملف |
-| 🖱 | **تكامل المستكشف** | أوامر القائمة (نسخ، قص/نقل، نسخ إلى مجلد…) + *لصق هنا* على خلفية المجلد |
-| 🔧 | **المحركات** | محرك مدمج أو Robocopy من ويندوز اختيارياً |
-| ⚖ | **التعارضات** | استبدال · تخطي · الاحتفاظ بالاثنين (إعادة تسمية) · استبدال إذا كان أحدث · السؤال أولاً |
-| 📊 | **ترتيب ذكي** | الملفات الكبيرة أولاً لتحسين الإنتاجية |
-| 🛡 | **الأمان** | فحص المساحة الحرة، والتحقق بـ MD5 قبل حذف المصدر |
-| 🎯 | **الراحة** | السحب والإفلات، الوضع المضغوط، تقرير الأخطاء مع النسخ إلى الحافظة |
-| 🌍 | **اللغات** | الإنجليزية والعربية والفرنسية — أو تلقائي (لغة ويندوز)؛ دعم كامل للاتجاه من اليمين إلى اليسار |
-| 📦 | **محمول وآمن** | كتابة ذرّية للإعدادات/الحافظة؛ القائمة عبر HKCU |
+- ⚡ **سريع** — نسخ متعدد الخيوط مع تزامن ذكي يُضبط تلقائياً حسب حجم الملف.
+- 🖱 **تكامل المستكشف** — نسخ، قص/نقل، نسخ إلى مجلد… من قائمة النقر الأيمن، مع **لصق هنا** على خلفية المجلد.
+- 🔧 **محركان** — محرك مدمج أو Robocopy من ويندوز اختيارياً.
+- ⚖ **معالجة التعارضات** — استبدال، تخطي، الاحتفاظ بالاثنين (إعادة تسمية)، استبدال إذا كان أحدث، أو السؤال أولاً.
+- 📊 **ترتيب ذكي** — الملفات الكبيرة أولاً لتحسين الإنتاجية.
+- 🛡 **أمان موثّق** — تحقق XXH3-64 في كل نسخ ونقل، وفحص المساحة الحرة، ونسخ احتياطي/استعادة عند الاستبدال.
+- 🎯 **الراحة** — السحب والإفلات، الوضع المضغوط، تقرير أخطاء مع النسخ إلى الحافظة.
+- 🌍 **اللغات** — الإنجليزية والعربية والفرنسية، أو تلقائي (لغة ويندوز)؛ دعم كامل للاتجاه من اليمين إلى اليسار.
+- 📦 **محمول** — ملف واحد، بلا مثبّت وبلا صلاحيات مسؤول؛ الإعدادات والحافظة تُكتبان بشكل ذرّي.
 
 ---
 
 ## ⚡ بدء سريع
 
-```
-1. التنزيل         →  SuperCopy.exe (ملف محمول واحد، بلا مثبّت)
-2. التشغيل مرة     →  يفتح لوحة الإعدادات
-3. تثبيت القائمة   →  اضغط «تثبيت القائمة» في الإعدادات (أو شغّل /install)
-4. النقر الأيمن    →  الملفات/المجلدات → Super Copy > نسخ / قص / نسخ إلى مجلد...
-5. لصق هنا         →  انقر بزر الماوس الأيمن على مساحة فارغة داخل مجلد → لصق هنا
-```
+1. **نزّل** [`SuperCopy.exe`](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) — ملف محمول واحد، بلا مثبّت.
+2. **شغّله مرة واحدة** — تفتح لوحة الإعدادات.
+3. **ثبّت القائمة** — اضغط **تثبيت القائمة** (أو شغّل `SuperCopy.exe /install`).
+4. **انقر بزر الماوس الأيمن** على أي ملف أو مجلد ← **Super Copy** ← نسخ / قص / نسخ إلى مجلد…
+5. **الصق** — انقر بزر الماوس الأيمن على مساحة فارغة داخل مجلد ← **لصق هنا**.
 
 > [!TIP]
 > لا حاجة إلى صلاحيات المسؤول — تُثبّت القائمة للمستخدم الحالي في `HKEY_CURRENT_USER`.
@@ -78,20 +84,28 @@
 
 ## 📥 التنزيل
 
-<table>
-  <tr>
-    <td align="center" width="100%">
-      <h3>🎯 تنزيل مباشر</h3>
-      <p><b>SuperCopy.exe</b> — ملف محمول واحد</p>
-      <a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
-        <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="تنزيل SuperCopy.exe">
-      </a>
-      <p><sub>بلا مثبّت · بلا صلاحيات مسؤول · شغّله فقط</sub></p>
-    </td>
-  </tr>
-</table>
+<div align="center">
 
-**SHA-256:** `9890A541A4DCC5BBE4DD753135B648F06E77CAEB7D7797946A0396FA1B1F83BB`
+### 🎯 تنزيل مباشر
+
+**SuperCopy.exe** — ملف محمول واحد
+
+<a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
+  <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="تنزيل SuperCopy.exe">
+</a>
+
+<sub>بلا مثبّت · بلا صلاحيات مسؤول · شغّله فقط</sub>
+
+</div>
+
+<details>
+<summary><b>ملخّص SHA-256</b></summary>
+
+```text
+CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
+```
+
+</details>
 
 ---
 
@@ -100,16 +114,14 @@
 > [!NOTE]
 > يقبل `SuperCopy.exe` الوسائط التالية:
 
-| الأمر | الإجراء |
-|---|---|
-| `SuperCopy.exe` | فتح الإعدادات |
-| `SuperCopy.exe /install` | إضافة إدخالات قائمة النقر بزر الماوس الأيمن |
-| `SuperCopy.exe /uninstall` | إزالة إدخالات قائمة النقر بزر الماوس الأيمن |
-| `SuperCopy.exe /copy <مسارات...>` | تذكّر العناصر للنسخ |
-| `SuperCopy.exe /cut <مسارات...>` | تذكّر العناصر للنقل |
-| `SuperCopy.exe /paste <مجلد>` | نسخ/نقل العناصر المتذكّرة إلى هنا |
-| `SuperCopy.exe /todevice` | نسخ العناصر المحددة إلى المجلد المختار |
-| `SuperCopy.exe /selftest` | تشغيل الفحص الذاتي (الخروج 0 إذا سليم) |
+- **`SuperCopy.exe`** — فتح الإعدادات.
+- **`SuperCopy.exe /install`** — إضافة إدخالات قائمة النقر بزر الماوس الأيمن.
+- **`SuperCopy.exe /uninstall`** — إزالة إدخالات القائمة.
+- **`SuperCopy.exe /copy <مسارات...>`** — تذكّر العناصر للنسخ.
+- **`SuperCopy.exe /cut <مسارات...>`** — تذكّر العناصر للنقل.
+- **`SuperCopy.exe /paste <مجلد>`** — نسخ/نقل العناصر المتذكّرة إلى هنا.
+- **`SuperCopy.exe /todevice`** — نسخ العناصر المحددة إلى المجلد المختار.
+- **`SuperCopy.exe /selftest`** — تشغيل الفحص الذاتي (الخروج 0 إذا سليم).
 
 ### أمثلة
 
@@ -131,9 +143,7 @@ SuperCopy.exe /selftest
 
 ## 🛠 البناء
 
-```bash
-build.cmd
-```
+شغّل `build.cmd` من جذر المستودع.
 
 > [!NOTE]
 > يستخدم **`csc.exe` من .NET Framework 3.5** (من مجلد `v3.5`) مع ملف **`app.manifest`** صريح بمستوى `asInvoker` (بدون طلب رفع الصلاحيات). يضمّن `SuperCopy.ico` وينتج `SuperCopy.exe` في جذر المستودع.
@@ -149,13 +159,17 @@ build.cmd
 
 ## 📷 لقطات الشاشة
 
-<div align="center">
+### النافذة الرئيسية
 
-| النافذة الرئيسية | الوضع المضغوط | الإعدادات |
-|:---:|:---:|:---:|
-| ![النافذة الرئيسية](screenshot/sc2.png) | ![الوضع المضغوط](screenshot/sc3.png) | ![الإعدادات](screenshot/sc1.png) |
+![النافذة الرئيسية](screenshot/sc2.png)
 
-</div>
+### الوضع المضغوط
+
+![الوضع المضغوط](screenshot/sc3.png)
+
+### الإعدادات
+
+![الإعدادات](screenshot/sc1.png)
 
 ---
 
@@ -168,7 +182,13 @@ build.cmd
 > **تخزين الإعدادات**: في `%APPDATA%\SuperCopy\settings.ini`.
 
 > [!TIP]
-> **تثبيت القائمة**: يتطلب `/install` (أو زر *تثبيت القائمة* في الإعدادات). **لا حاجة إلى صلاحيات المسؤول.**
+> **تثبيت القائمة**: يتطلب `/install` (أو زر **تثبيت القائمة** في الإعدادات). **لا حاجة إلى صلاحيات المسؤول.**
+
+---
+
+## 🗂 السجل
+
+ما الجديد في الإصدار v2 والإصدارات السابقة: [HISTORY.md](HISTORY.md). الكود والملف التنفيذي للإصدار v1 محفوظان في [`old/v1`](old/v1).
 
 ---
 
@@ -176,18 +196,18 @@ build.cmd
 
 المساهمات مرحّب بها! إليك كيف تساعد:
 
-1. 🍴 **اعمل Fork** للمستودع
-2. 🌿 **أنشئ** فرعاً للميزة (`git checkout -b feature/amazing-feature`)
-3. 💾 **أثبت** تغييراتك (`git commit -m 'Add amazing feature'`)
-4. 📤 **ادفع** إلى الفرع (`git push origin feature/amazing-feature`)
-5. 🔄 **افتح** Pull Request
+1. 🍴 **اعمل Fork** للمستودع.
+2. 🌿 **أنشئ** فرعاً للميزة (`git checkout -b feature/amazing-feature`).
+3. 💾 **أثبت** تغييراتك (`git commit -m 'Add amazing feature'`).
+4. 📤 **ادفع** إلى الفرع (`git push origin feature/amazing-feature`).
+5. 🔄 **افتح** Pull Request.
 
 ### طرق المساهمة
 
-- 🐛 [الإبلاغ عن الأخطاء](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — ساعدنا في تحسين الاستقرار
-- 💡 [اقتراح ميزات](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — شارك أفكارك
-- ⭐ [إضافة نجمة](https://github.com/youcef07dz/super-copy/stargazers) — أظهر دعمك
-- 📢 شارك مع الآخرين — انشر الخبر
+- 🐛 [الإبلاغ عن الأخطاء](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — ساعدنا في تحسين الاستقرار.
+- 💡 [اقتراح ميزات](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — شارك أفكارك.
+- ⭐ [إضافة نجمة](https://github.com/youcef07dz/super-copy/stargazers) — أظهر دعمك.
+- 📢 شارك مع الآخرين — انشر الخبر.
 
 ---
 
@@ -197,9 +217,7 @@ build.cmd
 
 <div align="center">
 
-```
-MIT License — مجاني للاستخدام الشخصي والتجاري
-```
+**MIT License — مجاني للاستخدام الشخصي والتجاري**
 
 صُنع بـ ❤ بواسطة [**@youcef07dz**](https://github.com/youcef07dz)
 

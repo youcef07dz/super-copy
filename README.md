@@ -1,35 +1,42 @@
 <div align="center">
 
 <p>
-  <a href="README.md">English</a>
-  <a href="README.ar.md">العربية</a>
-  <a href="README.fr.md">Français</a>
+  <a href="README.md"><img height="28" src="https://img.shields.io/badge/English-1F6FEB?style=for-the-badge" alt="English"></a>
+  <a href="README.ar.md"><img height="28" src="https://img.shields.io/badge/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-555?style=for-the-badge" alt="العربية"></a>
+  <a href="README.fr.md"><img height="28" src="https://img.shields.io/badge/Fran%C3%A7ais-555?style=for-the-badge" alt="Français"></a>
 </p>
+
+## ⚡ Generated with the [opencode](https://github.com/anomalyco/opencode) CLI
+
+**Free models: Big Pickle & DeepSeek V4**
 
 # 🚀 Super Copy
 
 **Lightweight, multi-threaded file copier for Windows XP → 11**<br>
 with seamless Explorer right-click integration
 
+[![Version 2.0](https://img.shields.io/badge/version-2.0-2EA44F?style=flat-square)](HISTORY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![Portable](https://img.shields.io/badge/Type-Portable-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![No Installer](https://img.shields.io/badge/Installer-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
-[![Admin Rights](https://img.shields.io/badge/Admin%20Rights-Not%20Required-2EA44F?style=flat-square)](https://github.com/youcef07dz/super-copy)
 [![Stars](https://img.shields.io/github/stars/youcef07dz/super-copy?style=flat-square&logo=github&color=yellow)](https://github.com/youcef07dz/super-copy/stargazers)
 [![Downloads](https://img.shields.io/github/downloads/youcef07dz/super-copy/total?style=flat-square&logo=github&color=orange)](https://github.com/youcef07dz/super-copy/releases)
 
 [**⬇ Download SuperCopy.exe**](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) ·
-[📖 Documentation](#-features) ·
+[📖 Features](#-features) ·
 [💬 Report Issue](https://github.com/youcef07dz/super-copy/issues) ·
 [⭐ Star Project](https://github.com/youcef07dz/super-copy/stargazers)
 
 </div>
 
+> [!TIP]
+> **New in v2:** every copy and move is verified with **XXH3-64**. If a checksum fails, the bad copy is removed, an overwritten file is restored, and your source is kept.
+
 ---
 
-## 📑 Table of Contents
+<details>
+<summary><b>📑 Table of Contents</b></summary>
 
 - [✨ Features](#-features)
 - [⚡ Quick Start](#-quick-start)
@@ -38,36 +45,35 @@ with seamless Explorer right-click integration
 - [🛠 Build](#-build)
 - [📷 Screenshots](#-screenshots)
 - [📝 Notes](#-notes)
+- [🗂 History](#-history)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
+
+</details>
 
 ---
 
 ## ✨ Features
 
-|  | Feature | Description |
-|:---:|---|---|
-| ⚡ | **Fast** | Multi-threaded copying with smart concurrency, auto-tuned by file size |
-| 🖱 | **Explorer integration** | Right-click verbs (Copy, Cut/move, Copy to dest…) + *Super Paste here* on folder background |
-| 🔧 | **Engines** | Built-in engine or optional Windows Robocopy |
-| ⚖ | **Conflicts** | Overwrite · Skip · Keep both (rename) · Overwrite if newer · Ask first |
-| 📊 | **Smart ordering** | Big files first for better throughput |
-| 🛡 | **Safety** | Free-space check, move-verify (MD5) before deleting source |
-| 🎯 | **Convenience** | Drag & drop, compact mode, error report with copy-to-clipboard |
-| 🌍 | **Languages** | English, Arabic, French — or Auto (follows the Windows language); full RTL for Arabic |
-| 📦 | **Portable + safe** | Atomic I/O for settings/clipboard; uses HKCU for menu |
+- ⚡ **Fast** — multi-threaded copying with smart concurrency, auto-tuned by file size.
+- 🖱 **Explorer integration** — right-click Copy, Cut/move, Copy to dest… plus **Super Paste here** on a folder background.
+- 🔧 **Two engines** — built-in copier or optional Windows Robocopy.
+- ⚖ **Conflict handling** — overwrite, skip, keep both (rename), overwrite if newer, or ask first.
+- 📊 **Smart ordering** — big files first for better throughput.
+- 🛡 **Verified safety** — XXH3-64 check on every copy and move, free-space guard, and backup/restore on overwrite.
+- 🎯 **Convenience** — drag & drop, compact mode, error report with copy-to-clipboard.
+- 🌍 **Languages** — English, Arabic, French, or Auto (follows Windows); full RTL for Arabic.
+- 📦 **Portable** — one file, no installer, no admin rights; settings and clipboard are written atomically.
 
 ---
 
 ## ⚡ Quick Start
 
-```
-1. Download        →  SuperCopy.exe (single portable file, no installer)
-2. Run once        →  Opens Settings panel
-3. Install menu    →  Click "Install menu" in Settings (or run with /install)
-4. Right-click     →  Files/folders → Super Copy > Copy / Cut / Copy to dest...
-5. Super Paste     →  Right-click empty space in a folder → Super Paste here
-```
+1. **Download** [`SuperCopy.exe`](https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe) — one portable file, no installer.
+2. **Run it once** — the Settings window opens.
+3. **Install the menu** — click **Install menu** (or run `SuperCopy.exe /install`).
+4. **Right-click** any file or folder → **Super Copy** → Copy / Cut / Copy to dest…
+5. **Paste** — right-click empty space in a folder → **Super Paste here**.
 
 > [!TIP]
 > No admin rights required — the menu is installed per-user in `HKEY_CURRENT_USER`.
@@ -76,38 +82,44 @@ with seamless Explorer right-click integration
 
 ## 📥 Download
 
-<table>
-  <tr>
-    <td align="center" width="100%">
-      <h3>🎯 Direct Download</h3>
-      <p><b>SuperCopy.exe</b> — single portable file</p>
-      <a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
-        <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="Download SuperCopy.exe">
-      </a>
-      <p><sub>No installer · No admin rights · Just run</sub></p>
-    </td>
-  </tr>
-</table>
+<div align="center">
 
-**SHA-256:** `9890A541A4DCC5BBE4DD753135B648F06E77CAEB7D7797946A0396FA1B1F83BB`
+### 🎯 Direct Download
+
+**SuperCopy.exe** — one portable file
+
+<a href="https://github.com/youcef07dz/super-copy/raw/refs/heads/main/SuperCopy.exe">
+  <img src="https://img.shields.io/badge/⬇_Download-SuperCopy.exe-2EA44F?style=for-the-badge&logo=windows&logoColor=white" alt="Download SuperCopy.exe">
+</a>
+
+<sub>No installer · No admin rights · Just run</sub>
+
+</div>
+
+<details>
+<summary><b>SHA-256 checksum</b></summary>
+
+```text
+CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
+```
+
+</details>
 
 ---
 
 ## 💻 Command Line
 
 > [!NOTE]
-> The `SuperCopy.exe` accepts the following command-line arguments:
+> `SuperCopy.exe` accepts the following arguments:
 
-| Command | Action |
-|---|---|
-| `SuperCopy.exe` | Open Settings |
-| `SuperCopy.exe /install` | Add Explorer right-click entries |
-| `SuperCopy.exe /uninstall` | Remove Explorer right-click entries |
-| `SuperCopy.exe /copy <paths...>` | Remember items to copy |
-| `SuperCopy.exe /cut <paths...>` | Remember items to move |
-| `SuperCopy.exe /paste <folder>` | Copy/move remembered items here |
-| `SuperCopy.exe /todevice` | Copy selected items to chosen folder |
-| `SuperCopy.exe /selftest` | Run self-check (exit 0 if OK) |
+- **`SuperCopy.exe`** — open Settings.
+- **`SuperCopy.exe /install`** — add Explorer right-click entries.
+- **`SuperCopy.exe /uninstall`** — remove Explorer right-click entries.
+- **`SuperCopy.exe /copy <paths...>`** — remember items to copy.
+- **`SuperCopy.exe /cut <paths...>`** — remember items to move.
+- **`SuperCopy.exe /paste <folder>`** — copy/move remembered items here.
+- **`SuperCopy.exe /todevice`** — copy selected items to a chosen folder.
+- **`SuperCopy.exe /selftest`** — run a self-check (exit 0 if OK).
 
 ### Examples
 
@@ -129,9 +141,7 @@ SuperCopy.exe /selftest
 
 ## 🛠 Build
 
-```bash
-build.cmd
-```
+Run `build.cmd` from the repo root.
 
 > [!NOTE]
 > Uses the **.NET Framework 3.5 `csc.exe`** (from the `v3.5` folder) with an explicit `asInvoker` **`app.manifest`** (no elevation prompt). Embeds `SuperCopy.ico` and outputs `SuperCopy.exe` to the repo root.
@@ -147,26 +157,36 @@ build.cmd
 
 ## 📷 Screenshots
 
-<div align="center">
+### Main window
 
-| Main window | Compact mode | Settings |
-|:---:|:---:|:---:|
-| ![Main window](screenshot/sc2.png) | ![Compact mode](screenshot/sc3.png) | ![Settings](screenshot/sc1.png) |
+![Main window](screenshot/sc2.png)
 
-</div>
+### Compact mode
+
+![Compact mode](screenshot/sc3.png)
+
+### Settings
+
+![Settings](screenshot/sc1.png)
 
 ---
 
 ## 📝 Notes
 
 > [!IMPORTANT]
-> **Windows 11 users**: Context menu entries appear under *Show more options* (or press `Shift + F10`).
+> **Windows 11 users**: context menu entries appear under *Show more options* (or press `Shift + F10`).
 
 > [!NOTE]
-> **Settings storage**: Stored in `%APPDATA%\SuperCopy\settings.ini`.
+> **Settings storage**: stored in `%APPDATA%\SuperCopy\settings.ini`.
 
 > [!TIP]
-> **Menu installation**: Requires `/install` (or *Install menu* button in Settings). **No admin rights required.**
+> **Menu installation**: requires `/install` (or the **Install menu** button in Settings). **No admin rights required.**
+
+---
+
+## 🗂 History
+
+What's new in v2 and older releases: [HISTORY.md](HISTORY.md). v1 source and binary are archived in [`old/v1`](old/v1).
 
 ---
 
@@ -174,18 +194,18 @@ build.cmd
 
 Contributions are welcome! Here's how you can help:
 
-1. 🍴 **Fork** the repository
-2. 🌿 **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. 💾 **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. 📤 **Push** to the branch (`git push origin feature/amazing-feature`)
-5. 🔄 **Open** a Pull Request
+1. 🍴 **Fork** the repository.
+2. 🌿 **Create** a feature branch (`git checkout -b feature/amazing-feature`).
+3. 💾 **Commit** your changes (`git commit -m 'Add amazing feature'`).
+4. 📤 **Push** to the branch (`git push origin feature/amazing-feature`).
+5. 🔄 **Open** a Pull Request.
 
 ### Ways to Contribute
 
-- 🐛 [Report bugs](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — help us improve stability
-- 💡 [Suggest features](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — share your ideas
-- ⭐ [Star the project](https://github.com/youcef07dz/super-copy/stargazers) — show your support
-- 📢 Share with others — spread the word
+- 🐛 [Report bugs](https://github.com/youcef07dz/super-copy/issues/new?labels=bug) — help us improve stability.
+- 💡 [Suggest features](https://github.com/youcef07dz/super-copy/issues/new?labels=enhancement) — share your ideas.
+- ⭐ [Star the project](https://github.com/youcef07dz/super-copy/stargazers) — show your support.
+- 📢 Share with others — spread the word.
 
 ---
 
@@ -195,9 +215,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <div align="center">
 
-```
-MIT License — Free for personal and commercial use
-```
+**MIT License — Free for personal and commercial use**
 
 Made with ❤ by [**@youcef07dz**](https://github.com/youcef07dz)
 

@@ -10,6 +10,9 @@
 
 ## Latest (this session)
 
+- Released **v2**: `Updates.Current=2`, `AssemblyVersion/FileVersion=2.0.0.0`, `update.txt=2`; exe rebuilt and installed copy refreshed (SHA-256 `CED3BDCF…`). Added `HISTORY.md` (v2 what's new + v1 summary) and a History section in all three READMEs. Archived v1 source+binary in `old/v1/`.
+- XXH3-64 verification (scalar port of the reference xxhash.h) for every copy and move; Setting "Verify copies and moves with XXH3" (`Verify=1`, default on) persists in `settings.ini`. Hash runs before deleting the backup/source, so a mismatch restores the old destination, removes the bad copy and keeps the source. Known-answer self-test vectors (empty/abc/240/241/1024/1025/3000 bytes) = `/selftest` exit 0; E2E copy + copy-overwrite + cross-drive move pass (hashes match, no `.sctmp`).
+
 - README.md / README.ar.md / README.fr.md: added the `SuperCopy.exe` SHA-256 (`9890A541…`) under the Download table so users can verify the download.
 
 - Access-denied fallback restored: on a finished job with `AccessDenied` (and not already elevated) the window asks "Retry the failed items as administrator?"; Yes re-enqueues the failed items (`QueueFailed` → `QueueStore`) and starts an elevated instance (`Admin.Relaunch`, UAC `runas`, `/queue` mode = `MainForm(null)` fed by `PollQueue`); `retryEscalated` stops the old instance from eating its own queue file before it exits. Re-adds the self-elevation removed in the AV-hardening pass (AV risk). Verified: build (v3.5 csc) + `/selftest` exit 0; `/queue` opens and stays alive.
