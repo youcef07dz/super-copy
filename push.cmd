@@ -6,8 +6,7 @@ git add README.md README.ar.md README.fr.md SuperCopy.cs SuperCopy.exe update.tx
         SuperCopy-kimi.cs SuperCopy-claud.cs HISTORY.md old progress.md task.md push.cmd
 if errorlevel 1 goto fail
 
-git commit -m "Release v2: XXH3 verification, history archive, mobile-friendly READMEs"
-if errorlevel 1 goto fail
+git commit -m "Release v2: XXH3 verification, history archive, mobile-friendly READMEs" || echo Nothing new to commit, pushing existing commits...
 
 git push origin main
 if errorlevel 1 goto fail
