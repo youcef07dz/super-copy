@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 git add README.md README.ar.md README.fr.md SuperCopy.cs SuperCopy.exe update.txt build.cmd ^
-        SuperCopy-kimi.cs SuperCopy-claud.cs HISTORY.md old progress.md task.md push.cmd
+        HISTORY.md old progress.md task.md push.cmd
 if errorlevel 1 goto fail
 
 git commit -m "Release v2: XXH3 verification, history archive, mobile-friendly READMEs" || echo Nothing new to commit, pushing existing commits...
