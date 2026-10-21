@@ -57,3 +57,4 @@
 - [x] v3: the copy window comes on top while the job runs (`TopMost` + `BringToFront`, dropped in `AllDone`), also for the Explorer-verb and queue flows
 - [x] v3: two progress bars in the header — one for the whole job, one for the file being copied — same size, visible in full and compact mode
 - [x] v3 E2E: Ctrl+V in a real Explorer window copies with Super Copy (shell paste suppressed), cut+paste moves the file (source deleted), Explorer paste does not run; helper stops when the option is off; build + installed /selftest exit 0
+- [x] Queue view: adding files to the queue scans them right away and lists every file of every job in the main list; the header (total size, progress bar, average speed, ETA, file count) and the window title cover the whole queue, not just the running job

@@ -8,7 +8,7 @@
 - New Settings option **"Use Super Copy as the default copy"** (`DefaultCopy=1` in `settings.ini`), enabled by default.
 - A small background helper (`SuperCopy.exe /agent`) does the work: it watches `Ctrl+V` only while an Explorer window has the focus, reads the file list and the cut/copy flag from the clipboard, finds the destination folder through the shell, and hands the job to Super Copy.
 - The helper **starts with Windows** while the option is on (per-user entry `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`) and stops itself when the option is switched off.
-- The copy window now **comes on top** while the job runs, and the header shows **two progress bars**: one for the whole operation and one for the file being copied (same size, in full and in compact mode).
+- The copy window now **comes on top** while the job runs, and the header shows the progress of the whole queue: every file added to the queue is listed right away (the folders are scanned as soon as the job is queued) and the total size, the progress bar, the average speed and the ETA cover all the queued jobs, not only the one that is running.
 - Still pure .NET 2.0 managed code: runs on Windows XP SP3 through Windows 11, 32-bit and 64-bit.
 
 ### Archive

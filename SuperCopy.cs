@@ -1469,6 +1469,7 @@ namespace SuperCopyApp
         public int ActiveMs;
         long lastDone;
         int next, workers;
+        bool scanStarted;                // the scan thread is running (or already finished)
         long spaceLimit = -1, needBytes;   // destination free space (bytes); -1 = unknown
         bool noSpace;                      // scanner-only: true once the queued bytes exceed free space
 
@@ -1563,10 +1564,22 @@ namespace SuperCopyApp
             Settings.AskPrompting = 0;
             int n = Settings.SmartConcurrency ? 1 : Math.Max(1, Math.Min(32, Settings.Concurrency));
             lock (sync) { workers += n; }
+            Prepare();     // scan may already be running (started when the job was queued)
+            for (int i = 0; i < n; i++) SpawnWorker();
+        }
+
+        // Scan in the background as soon as the job is queued, so the file list and the
+        // total size are known right away (the copy itself still waits for Start()).
+        public void Prepare()
+        {
+            lock (sync)
+            {
+                if (scanStarted) return;
+                scanStarted = true;
+            }
             Thread st = new Thread(new ThreadStart(ScanMain), 256 * 1024);
             st.IsBackground = true;
             st.Start();
-            for (int i = 0; i < n; i++) SpawnWorker();
         }
 
         void SpawnWorker()
@@ -2552,8 +2565,6 @@ namespace SuperCopyApp
     {
         public string Title = "", Elapsed = "0:00", BarText = "", TxtL = "", TxtM = "", TxtR = "";
         public double Frac;                 // all files of the job
-        public double FileFrac;             // the file being copied right now
-        public string FileText = "";
         public bool Marquee;
         public int Tick;
         public Color ColA = Theme.Cyan, ColB = Theme.Violet;
@@ -2623,11 +2634,7 @@ namespace SuperCopyApp
             Rectangle bar = new Rectangle(14, 42, Width - 28, 26);
             Gfx.Bar(g, bar, Frac, ColA, ColB, BarText, Marquee, Tick, 8);
 
-            // second bar: the file that is being copied right now (same size as the first)
-            Rectangle fbar = new Rectangle(14, 72, Width - 28, 26);
-            Gfx.Bar(g, fbar, FileFrac, Theme.Cyan, Theme.Violet, FileText, false, 0, 8);
-
-            Rectangle sr = new Rectangle(14, 102, Width - 28, 20);
+            Rectangle sr = new Rectangle(14, 74, Width - 28, 20);
             TextRenderer.DrawText(g, TxtL, Theme.Bold, sr, Theme.Text,
                 L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(g, TxtM, Theme.Bold, sr, Theme.Text,
@@ -2813,7 +2820,7 @@ namespace SuperCopyApp
             // ----- header -----
             header = new HeaderPanel();
         header.Dock = DockStyle.Top;
-        header.Height = 132;
+        header.Height = 104;
             btnHide = UI.MakeButton(L.T("Hide", "إخفاء", "Masquer"), 70, Color.FromArgb(70, 90, 170));
             btnHide.Height = 26;
             header.HideButton = btnHide;
@@ -2969,6 +2976,7 @@ namespace SuperCopyApp
         public void AddJob(CopyJob j)
         {
             jobs.Add(j);
+            j.Prepare();      // scan now: the files and the total size show up in the list at once
             lastDest = j.Dest;
             jobBox.Items.Add(j);
             doneHandled = false;
@@ -2977,13 +2985,57 @@ namespace SuperCopyApp
             jobBox.Visible = multi && !compact;
             jobBox.Height = Math.Min(jobs.Count, 4) * 26 + 2;
             if (cur == null) SetCur(j);
+            lv.VirtualListSize = ListCount();
             ShowOnTop();      // the user has to see the copy that just started
+        }
+
+        // the main list holds the files of every job in the queue, one after the other
+        int ListCount()
+        {
+            int n = 0;
+            for (int i = 0; i < jobs.Count; i++) n += jobs[i].ItemCount;
+            return n;
+        }
+
+        // row -> (job, item); rows are the items of all jobs, in queue order
+        CopyItem ListItem(int row, out CopyJob job)
+        {
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                int c = jobs[i].ItemCount;
+                if (row < c) { job = jobs[i]; return job.GetItem(row); }
+                row -= c;
+            }
+            job = null;
+            return null;
+        }
+
+        // row of the first item of a job (for the "keep the active file visible" logic)
+        int ListRowOf(CopyJob j)
+        {
+            int n = 0;
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                if (jobs[i] == j) return n;
+                n += jobs[i].ItemCount;
+            }
+            return -1;
+        }
+
+        // progress over the whole queue (all jobs, running and waiting)
+        double QueueFraction()
+        {
+            long total = 0, done = 0;
+            for (int i = 0; i < jobs.Count; i++) { total += jobs[i].Total; done += jobs[i].DoneNow; }
+            if (total <= 0) return 0;
+            double f = (double)done / total;
+            return f > 1 ? 1 : (f < 0 ? 0 : f);
         }
 
         void SetCur(CopyJob j)
         {
             cur = j;
-            lv.VirtualListSize = j.ItemCount;
+            lv.VirtualListSize = ListCount();
             lv.Invalidate();
             int idx = jobs.IndexOf(j);
             if (idx >= 0 && jobBox.SelectedIndex != idx)
@@ -3051,19 +3103,21 @@ namespace SuperCopyApp
 
             // caption / tray tooltip stay current even when hidden
             string cap = "Super Copy";
-            if (cur != null && cur.Started && !cur.Finished) cap = ((int)(cur.Fraction * 100)) + "% - Super Copy";
+            if (cur != null && cur.Started && !cur.Finished) cap = ((int)(QueueFraction() * 100)) + "% - Super Copy";
             if (Text != cap) Text = cap;
             if (tray.Visible && tray.Text != cap) tray.Text = cap;
 
             if (Visible && WindowState != FormWindowState.Minimized && cur != null)
             {
-                int cnt = cur.ItemCount;
+                int cnt = ListCount();
                 if (lv.VirtualListSize != cnt) lv.VirtualListSize = cnt;
                 if (cur == running && !cur.Finished && cnt > 0 && lv.Visible && !MouseInList())
                 {
                     int idx = cur.FirstActiveIndex();
                     if (idx >= 0)
                     {
+                        int row = ListRowOf(cur);
+                        if (row >= 0) idx += row;
                         try
                         {
                             lv.EnsureVisible(Math.Min(cnt - 1, idx + 8));
@@ -3175,65 +3229,79 @@ namespace SuperCopyApp
 
         void UpdateHeader()
         {
-            CopyJob j = cur;
             HeaderPanel h = header;
-            long total = j.Total, done = j.DoneNow;
-            int files = j.ItemCount;
-            string errs = j.Errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + j.Errors : "";
-            string filesTxt = j.FilesDone + " / " + files + (j.ScanDone ? "" : "+") + " " +
+            CopyJob run = null, queued = null, last = null;
+            long total = 0, done = 0, active = 0;
+            int files = 0, filesDone = 0, errors = 0;
+            bool scanning = false, allFinished = true;
+
+            // the numbers cover the whole queue, the title describes the job that matters now
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                CopyJob j = jobs[i];
+                total += j.Total; done += j.DoneNow; active += j.ActiveMs;
+                files += j.ItemCount; filesDone += j.FilesDone; errors += j.Errors;
+                if (!j.ScanDone) scanning = true;
+                if (j.Started && !j.Finished) { run = j; allFinished = false; }
+                else if (!j.Started) { allFinished = false; if (queued == null) queued = j; }
+                last = j;
+            }
+            CopyJob j2 = run != null ? run : (queued != null ? queued : last);
+            if (j2 == null) return;
+
+            long speed = run != null ? (long)run.Speed : 0;
+            double eta = speed > 0 ? (double)(total - done) / speed : -1;
+            double frac = total > 0 ? QueueFraction() : (allFinished ? 1.0 : 0.0);
+            if (frac > 1) frac = 1; if (frac < 0) frac = 0;
+
+            string errs = errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + errors : "";
+            string filesTxt = filesDone + " / " + files + (scanning ? "+" : "") + " " +
                               L.T("files", "ملف", "fichiers") + "    " +
-                              Fmt.Size(done) + " / " + Fmt.Size(total) + (j.ScanDone ? "" : "+") + errs;
-            string verb = j.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
-            h.Elapsed = Fmt.Time(j.ActiveMs / 1000.0);
+                              Fmt.Size(done) + " / " + Fmt.Size(total) + (scanning ? "+" : "") + errs;
+            string verb = j2.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
+            h.Elapsed = Fmt.Time(active / 1000.0);
             h.Marquee = false;
-            h.Frac = j.Fraction;
+            h.Frac = frac;
             h.TxtR = filesTxt;
 
-            // the file that is being copied right now (the one the list highlights)
-            int fi = j.FirstActiveIndex();
-            CopyItem fit = fi >= 0 ? j.GetItem(fi) : null;
-            h.FileFrac = fit == null ? 0 : fit.Fraction;
-            h.FileText = fit == null || fit.Src == null ? ""
-                       : fit.Name + "   " + ((int)(h.FileFrac * 100)) + "%   " + Fmt.Size(fit.Size);
-
-            if (!j.Started)
+            if (!j2.Started)
             {
-                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j.Summary;
+                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j2.Summary;
                 h.BarText = L.T("Waiting...", "بالانتظار...", "En attente...");
                 h.Frac = 0;
                 h.ColA = Color.FromArgb(70, 80, 120); h.ColB = Color.FromArgb(100, 110, 150);
                 h.TxtL = L.T("Speed: -", "السرعة: -", "Vitesse : -");
                 h.TxtM = L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -");
             }
-            else if (j.Finished)
+            else if (j2.Finished)
             {
-                if (j.Cancelled)
+                if (j2.Cancelled)
                 {
-                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j.Summary;
+                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j2.Summary;
                     h.ColA = Color.FromArgb(210, 120, 30); h.ColB = Color.FromArgb(255, 190, 90);
                 }
-                else if (j.Errors > 0)
+                else if (errors > 0)
                 {
-                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j.Summary;
+                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j2.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(200, 40, 60); h.ColB = Color.FromArgb(255, 120, 100);
                 }
                 else
                 {
-                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j.Summary;
+                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j2.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(30, 170, 100); h.ColB = Color.FromArgb(120, 240, 160);
                 }
                 h.BarText = ((int)Math.Round(h.Frac * 100)) + "%";
-                double avg = j.ActiveMs > 0 ? done * 1000.0 / j.ActiveMs : 0;
+                double avg = active > 0 ? done * 1000.0 / active : 0;
                 h.TxtL = L.T("Average speed: ", "متوسط السرعة: ", "Vitesse moyenne : ") + Fmt.Size((long)avg) + "/s";
-                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(j.ActiveMs / 1000.0);
+                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(active / 1000.0);
             }
             else
             {
-                bool paused = j.Paused;
-                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j.Summary;
-                if (!j.ScanDone)
+                bool paused = j2.Paused;
+                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j2.Summary;
+                if (scanning)
                 {
                     h.Marquee = true;
                     h.BarText = L.T("Scanning folders...  ", "جارٍ فحص المجلدات...  ", "Analyse des dossiers...  ") +
@@ -3243,12 +3311,14 @@ namespace SuperCopyApp
                 if (paused) { h.ColA = Theme.Orange; h.ColB = Color.FromArgb(255, 210, 110); }
                 else { h.ColA = Theme.Cyan; h.ColB = Theme.Violet; }
                 h.TxtL = paused ? L.T("Speed: paused", "السرعة: متوقفة", "Vitesse : en pause")
-                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size((long)j.Speed) + "/s";
+                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size(speed) + "/s";
                 h.TxtM = paused ? L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -")
-                                : (j.ScanDone ? L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(j.Eta)
-                                              : L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul..."));
+                                : (scanning ? L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul...")
+                                            : L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(eta));
             }
-            lblErr.Text = j.LastError == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + j.LastError;
+            string lastErr = null;
+            for (int i = 0; i < jobs.Count; i++) if (jobs[i].LastError != null) lastErr = jobs[i].LastError;
+            lblErr.Text = lastErr == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + lastErr;
         }
 
         void UpdateButtons()
@@ -3258,7 +3328,8 @@ namespace SuperCopyApp
             btnCancel.Enabled = active;
             string t = (cur != null && cur.Paused) ? L.T("Resume", "متابعة", "Reprendre") : L.T("Pause", "إيقاف", "Pause");
             if (btnPause.Text != t) btnPause.Text = t;
-            bool showErr = cur != null && cur.Errors > 0;
+            bool showErr = false;
+            for (int i = 0; i < jobs.Count; i++) if (jobs[i].Errors > 0) { showErr = true; break; }
             if (btnErrReport.Visible != showErr)
             {
                 btnErrReport.Visible = showErr;
@@ -3283,7 +3354,12 @@ namespace SuperCopyApp
         void btnErrReport_Click(object s, EventArgs e)
         {
             if (cur == null) return;
-            string text = cur.ErrorReport();
+            string text = "";
+            for (int i = 0; i < jobs.Count; i++)     // every job in the queue
+            {
+                string t = jobs[i].ErrorReport();
+                if (t.Length > 0) text += (text.Length > 0 ? "\r\n" : "") + t;
+            }
             if (text.Length == 0) text = L.T("No errors.", "لا توجد أخطاء.", "Aucune erreur.");
 
             Form f = new Form();
@@ -3514,7 +3590,16 @@ namespace SuperCopyApp
         // ------------------------------------------------------------
         void lv_Retrieve(object s, RetrieveVirtualItemEventArgs e)
         {
-            e.Item = new ListViewItem(new string[] { "", "", "", "", "", "" });
+            CopyJob oj;
+            CopyItem it = ListItem(e.ItemIndex, out oj);
+            // the text is painted by lv_DrawSub, but the real values make the list
+            // readable for screen readers and for copying a row
+            e.Item = new ListViewItem(new string[]
+            {
+                it == null || it.Name == null ? "" : it.Name,
+                it == null || it.Src == null ? "" : Fmt.Size(it.Size),
+                "", "", "", ""
+            });
         }
 
         void lv_DrawHeader(object s, DrawListViewColumnHeaderEventArgs e)
@@ -3540,7 +3625,8 @@ namespace SuperCopyApp
 
         void lv_DrawSub(object s, DrawListViewSubItemEventArgs e)
         {
-            CopyItem it = cur == null ? null : cur.GetItem(e.ItemIndex);
+            CopyJob oj;
+            CopyItem it = ListItem(e.ItemIndex, out oj);
             Graphics g = e.Graphics;
             Rectangle r = e.Bounds;
             if (e.ColumnIndex == 0) r.Width = lv.Columns[0].Width;   // first-column bounds quirk
@@ -3549,7 +3635,7 @@ namespace SuperCopyApp
             if (it == null) return;
 
             Rectangle tr = new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 10), r.Height);
-            bool paused = cur.Paused;
+            bool paused = oj != null && oj.Paused;
             int logical = lv.Columns.Count - 1 - e.ColumnIndex;
             if (!L.Rtl) logical = e.ColumnIndex;
             switch (logical)
