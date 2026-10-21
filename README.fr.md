@@ -184,6 +184,9 @@ Lancez `build.cmd` depuis la racine du dépôt.
 > [!NOTE]
 > **Stockage des réglages** : dans `%APPDATA%\SuperCopy\settings.ini`.
 
+> [!NOTE]
+> **Copie installée** : le menu de l'Explorateur et l'assistant s'exécutent depuis `%APPDATA%\SuperCopy\SuperCopyHelper.exe` — un nom à part, pour le distinguer de l'application que vous lancez dans le gestionnaire des tâches. `/uninstall` arrête l'assistant et supprime ce fichier.
+
 > [!TIP]
 > **Installation du menu** : requiert `/install` (ou le bouton **Installer le menu** dans les Réglages). **Aucun droit administrateur requis.**
 

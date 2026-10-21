@@ -185,7 +185,10 @@ Run `build.cmd` from the repo root.
 > **Settings storage**: stored in `%APPDATA%\SuperCopy\settings.ini`.
 
 > [!NOTE]
-> **Default copy helper**: it starts with Windows through the per-user entry `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (`SuperCopy.exe /agent`) and stops itself when the option is switched off.
+> **Installed copy**: the Explorer menu and the helper run from `%APPDATA%\SuperCopy\SuperCopyHelper.exe` - a name of its own, so the task manager tells it apart from the app you start. `/uninstall` stops the helper and removes that file.
+
+> [!NOTE]
+> **Default copy helper**: it starts with Windows through the per-user entry `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (`SuperCopyHelper.exe /agent`) and stops itself when the option is switched off.
 
 > [!TIP]
 > **Menu installation**: requires `/install` (or the **Install menu** button in Settings). **No admin rights required.**

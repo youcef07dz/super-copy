@@ -263,7 +263,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Paths
     {
-        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, ExeInstalled;
+        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, ExeInstalled, ExeLegacy;
 
         public static void Init()
         {
@@ -274,9 +274,13 @@ namespace SuperCopyApp
             ClipDevice = Path.Combine(AppDir, "clipboard.device.txt"); // separate so it never clobbers a pending /copy
             QueueDir = Path.Combine(AppDir, "queue");
             Ini = Path.Combine(AppDir, "settings.ini");
-            ExeInstalled = Path.Combine(AppDir, "SuperCopy.exe");
+            // the installed copy carries its own name: two "SuperCopy.exe" in the task
+            // manager (the app the user starts and this one) could not be told apart
+            ExeInstalled = Path.Combine(AppDir, "SuperCopyHelper.exe");
+            ExeLegacy = Path.Combine(AppDir, "SuperCopy.exe");     // older installs: the app's own name
             try { Directory.CreateDirectory(QueueDir); } catch { }
             try { File.Delete(ExeInstalled + ".old"); } catch { }   // leftover from removing while our own copy ran
+            try { File.Delete(ExeLegacy + ".old"); } catch { }      // same, for the older file name
             // a claimed job file older than 10 minutes is a leftover from a crash: clean it up
             try
             {
@@ -811,11 +815,16 @@ namespace SuperCopyApp
     {
         public static void Install()
         {
+            DropLegacy();   // an older install kept a copy under the app's own name
+            bool wasOn = Settings.DefaultCopy;
             try
             {
                 if (!string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
                 {
                     Directory.CreateDirectory(Paths.AppDir);
+                    // a running helper holds the installed copy: let it leave and free the path
+                    if (wasOn) { Settings.DefaultCopy = false; Settings.Save(); }
+                    RemoveFile(Paths.ExeInstalled, 20);
                     File.Copy(Application.ExecutablePath, Paths.ExeInstalled, true);
                     if (!File.Exists(Paths.ExeInstalled))
                         throw new IOException("the program could not be copied to " + Paths.AppDir);
@@ -825,8 +834,9 @@ namespace SuperCopyApp
             {
                 throw new IOException(ex.Message, ex);
             }
+            finally { if (wasOn) { Settings.DefaultCopy = true; Settings.Save(); } }
             ShellIntegration.Install(Paths.ExeInstalled);
-            HookAgent.Enable();   // default copy: start the helper + autostart
+            HookAgent.Apply();   // the helper follows the setting: it runs only while Super Copy is the default copy
         }
 
         public static void Remove()
@@ -834,16 +844,47 @@ namespace SuperCopyApp
             ShellIntegration.Uninstall();
             HookAgent.Disable();
             Settings.DefaultCopy = false;
-            Settings.Save();
+            Settings.Save();      // the helper watches settings.ini and leaves within a couple of seconds
+            DropLegacy();         // the old copy may still be running too
+            string exe = Paths.ExeInstalled;
+            if (!File.Exists(exe)) return;
+            bool self = string.Equals(Application.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase);
+            RemoveFile(exe, self ? 1 : 20);   // the helper holds the file while it runs
+        }
+
+        // delete a file that a running copy may be holding: retry for a while,
+        // then rename it away (renaming a running exe works, deleting it does not)
+        internal static bool RemoveFile(string path, int tries)
+        {
+            for (int i = 0; i < tries; i++)
+            {
+                if (!File.Exists(path)) return true;
+                try { File.Delete(path); } catch { }
+                if (!File.Exists(path)) return true;
+                Thread.Sleep(200);
+            }
+            try { File.Move(path, path + ".old"); } catch { }
+            return !File.Exists(path);
+        }
+
+        // an older install kept a copy under the app's own name: two identical
+        // entries in the task manager, and the file could not be deleted while it ran
+        static void DropLegacy()
+        {
+            string legacy = Paths.ExeLegacy;
+            if (!File.Exists(legacy)) return;
+            if (string.Equals(Application.ExecutablePath, legacy, StringComparison.OrdinalIgnoreCase)) return;   // we are it
+            try { File.Delete(legacy); return; } catch { }
+            // the old helper still runs from it: it leaves when it sees the option off
+            bool wasOn = Settings.DefaultCopy;
             try
             {
-                if (!File.Exists(Paths.ExeInstalled)) return;
-                // if we are the installed copy, rename it (works on a locked exe) and sweep it on next start
-                if (string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
-                    File.Move(Paths.ExeInstalled, Paths.ExeInstalled + ".old");
-                else File.Delete(Paths.ExeInstalled);
+                // the old helper leaves when it sees the option off
+                if (wasOn) { Settings.DefaultCopy = false; Settings.Save(); }
+                RemoveFile(legacy, 20);
             }
             catch { }
+            finally { if (wasOn) { Settings.DefaultCopy = true; Settings.Save(); } }
         }
     }
 
@@ -2317,6 +2358,27 @@ namespace SuperCopyApp
             if (HookAgent.UrlToPath("http://example.com/x") != null) return 29;
             if (!HookAgent.IsExplorerClass("CabinetWClass")) return 29;
             if (HookAgent.IsExplorerClass("Notepad")) return 29;
+
+            // the installed copy must go away even while it runs: a file that is in
+            // use cannot be deleted, so it is renamed away instead - and it is never lost
+            string rf = Path.Combine(Path.GetTempPath(), "sc_selftest_rm.txt");
+            try
+            {
+                File.WriteAllText(rf, "x");
+                if (!Installer.RemoveFile(rf, 2) || File.Exists(rf)) return 30;
+                File.WriteAllText(rf, "x");
+                using (FileStream lk = new FileStream(rf, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    Installer.RemoveFile(rf, 2);        // in use: it cannot be deleted
+                    if (!File.Exists(rf)) return 30;    // and it must not be lost
+                }
+                if (!Installer.RemoveFile(rf, 2) || File.Exists(rf)) return 30;   // free again: it goes
+            }
+            finally
+            {
+                try { File.Delete(rf); } catch { }
+                try { File.Delete(rf + ".old"); } catch { }
+            }
             return 0;
         }
 
