@@ -4,6 +4,15 @@
 
 ### What's new
 
+- **Safety nets around the copy engine**: a file whose source disappears between the scan and the copy is reported as an error instead of being skipped silently; a destination that cannot be set aside is never overwritten in place; a failed or incomplete copy always puts the previous destination back and keeps the source; the length of the copy is checked even when the hash verification is switched off.
+- Two files that end up at the same destination can no longer be written at the same time.
+- A crash in the scan or in a copy worker no longer ends the whole program: the job reports the error and the other workers keep going.
+- The "ask first" dialog cannot be answered by accident: the safe choice (skip) is preselected, the dialog stays on top, and cancelling it skips the other waiting files too.
+- The queue hands a job over by claiming the file first, so two windows can never run the same job.
+- `settings.ini` is written atomically now: a half-written file can no longer switch the background helper off by accident.
+- The background helper only takes over `Ctrl+V` when the clipboard really holds files, reads the cut/copy flag from locked memory and no longer cuts long paths short.
+- The window closes without blocking the interface: the workers are cancelled and the window waits for them in the background instead of freezing the program for three seconds.
+- Pause and Cancel always act on the job that is really running; "Reset to default" in the settings no longer changes anything when the window is cancelled.
 - **Less idle work**: the window no longer repaints itself four times a second when nothing changes. The header is redrawn only when a value really changes (or while the scan marquee animates), the file list only while a job runs, when a file is added or when the last job ends.
 - The background helper no longer re-reads `settings.ini` every two seconds; it only reads the file when it actually changed.
 - The queue is polled once a second instead of twice.

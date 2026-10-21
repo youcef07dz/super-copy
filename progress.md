@@ -90,8 +90,15 @@
 
 ## Known gaps (accepted)
 - `/todevice` silently no-ops if a SuperCopy GUI is already open (single-instance mutex path).
-- Two items can resolve to the same destination path (incl. `UniqueFile` race).
 - Free-space estimate is approximate (conflict=2 keep-both can under-count).
+## Safety pass (2026-10-21)
+- Review of the whole program (engine, window, helper) with the fixes applied right after: engine - a source that vanished is an error, the destination is set aside under a unique name and always restored on failure, the copy length is checked even without hash verify, two items with the same destination are serialized by a per-destination lock, a failed robocopy run is an error and not a "cancelled", the scan and every worker have a top-level catch, the buffer allocation survives an `OutOfMemoryException`.
+- Window - the conflict dialog preselects "skip" (Enter never destroys a file), stays on top, and cancelling it skips the other waiting files too (`Settings.AskGen`); the close button cancels the workers and closes the window later instead of freezing the interface for 3 s; the close question defaults to the safe answer; Pause/Cancel act on the running job; "Reset to default" only fills the controls, so Cancel really cancels; the admin prompt keeps the failed job across the modal dialog; the timer is stopped around modal dialogs.
+- Helper - the cut/copy flag is read from locked clipboard memory (`GlobalLock`), long paths are no longer cut short (`DragQueryFile` length first), `Ctrl+V` is only swallowed when the clipboard really holds files, the hook result and the paste path are checked, `settings.ini` is written atomically (`File.Replace`), the autostart entry only ever points at the installed copy, an unknown command line option is reported instead of silently starting the helper.
+- Queue - a job file is claimed by moving it, so two windows can never run the same job; stale claims from a crash are cleaned up after 10 minutes.
+- Self-check: `/selftest` exit 24 (a vanished source is an error and nothing is written) and exit 25 (a failing copy puts the old destination back and leaves no backup file); build green; E2E copy + move through the queue verified; installed copy refreshed, `/selftest` exit 0, helper running.
+- Limits: the Shell COM objects of the helper are not released (a small leak per paste); the `.claimed` file is only cleaned at startup, not while running.
+
 ## Idle CPU (2026-10-21)
 - The 250 ms timer repainted the header, the file list and the job strip on every tick, even when nothing had changed, and `UpdateHeader` rebuilt all the strings each time.
 - Now: `UpdateHeader` remembers the shown values and raises `headerDirty` only when one of them changes; the header is invalidated when `headerDirty` or while `Marquee` is on (the scan animation); the list is invalidated while a job runs, when the row count changes, when the busy state flips or when the error count changes; the job strip only while a job runs or when the job count changes.
