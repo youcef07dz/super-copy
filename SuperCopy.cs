@@ -912,10 +912,18 @@ namespace SuperCopyApp
         }
 
         // the helper follows the setting: it leaves when the option is switched off
+        static DateTime iniStamp = DateTime.MinValue;
+        static bool iniSeen = false;
         static void Watch(object s, EventArgs e)
         {
             try
             {
+                // only read the file when it really changed (this runs all day)
+                DateTime w;
+                try { w = File.GetLastWriteTimeUtc(Paths.Ini); } catch { w = DateTime.MinValue; }
+                if (iniSeen && w == iniStamp) return;
+                iniSeen = true;
+                iniStamp = w;
                 Settings.Load();
                 if (!Settings.DefaultCopy) Stop(s, e);
             }
@@ -1000,16 +1008,15 @@ namespace SuperCopyApp
                 if (nCode >= 0 && (int)wParam == WM_KEYDOWN)
                 {
                     int vk = Marshal.ReadInt32(lParam) & 0xFF;
-                    if ((GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
+                    // the cheap test first: this callback runs for every key press of the whole system
+                    if (vk == 0x56 &&
+                        (GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
                     {
-                        if (vk == 0x56)                       // V -> paste
+                        IntPtr fg = GetForegroundWindow();
+                        if (IsExplorer(fg) && !InEditBox(fg))
                         {
-                            IntPtr fg = GetForegroundWindow();
-                            if (IsExplorer(fg) && !InEditBox(fg))
-                            {
-                                Post(fg);
-                                return new IntPtr(1);          // swallow: Explorer must not paste
-                            }
+                            Post(fg);
+                            return new IntPtr(1);          // swallow: Explorer must not paste
                         }
                     }
                 }
@@ -1275,6 +1282,7 @@ namespace SuperCopyApp
         public static readonly SolidBrush BrSel = new SolidBrush(Sel);
         public static readonly SolidBrush BrPanel = new SolidBrush(Panel);
         public static readonly SolidBrush BrGloss = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
+        public static readonly Pen PenBorder = new Pen(Border);
 
         public static readonly Font Cell = new Font("Tahoma", 8.25f);
         public static readonly Font Bold = new Font("Tahoma", 8.25f, FontStyle.Bold);
@@ -1375,7 +1383,7 @@ namespace SuperCopyApp
                     g.FillRectangle(Theme.BrGloss, new Rectangle(fr.X, fr.Y, fr.Width, fr.Height / 2));
                 }
                 g.Restore(st);
-                using (Pen p = new Pen(Theme.Border)) g.DrawPath(p, path);
+                g.DrawPath(Theme.PenBorder, path);
             }
             g.SmoothingMode = old;
 
@@ -2721,6 +2729,11 @@ namespace SuperCopyApp
         bool exiting, doneHandled, settingSel, compact;
         bool adminPrompted, retryEscalated;   // access-denied -> "retry as admin?" asked / elevating
         int lastTick, tickN, closeAt = -1;
+        int paintedCount = -1;                // list state at the last repaint (repaint only on change)
+        bool paintedBusy, headerDirty = true;
+        int paintedJobs = -1;                 // job count at the last job-box repaint
+        int paintedErrs = -1;                 // error count at the last list repaint
+        int lastActiveRow = -1;               // row of the active file (scroll only when it moves)
         Size savedSize;
 
         static TextFormatFlags CellFlags
@@ -3093,7 +3106,7 @@ namespace SuperCopyApp
             lastTick = now;
             if (dt < 1) dt = 1;
 
-            if (tickN % 2 == 0) PollQueue();
+            if (tickN % 4 == 0) PollQueue();      // every second: hand-over jobs from other instances
             if (running != null && !running.Finished)
             {
                 running.EnsureWorkers();
@@ -3111,27 +3124,45 @@ namespace SuperCopyApp
             {
                 int cnt = ListCount();
                 if (lv.VirtualListSize != cnt) lv.VirtualListSize = cnt;
-                if (cur == running && !cur.Finished && cnt > 0 && lv.Visible && !MouseInList())
+                if (cur == running && !cur.Finished && cnt > 0 && lv.Visible)
                 {
                     int idx = cur.FirstActiveIndex();
                     if (idx >= 0)
                     {
                         int row = ListRowOf(cur);
                         if (row >= 0) idx += row;
-                        try
+                        if (idx != lastActiveRow && !MouseInList())   // scroll only when the active file changes
                         {
-                            lv.EnsureVisible(Math.Min(cnt - 1, idx + 8));
-                            lv.EnsureVisible(idx);
+                            lastActiveRow = idx;
+                            try
+                            {
+                                lv.EnsureVisible(Math.Min(cnt - 1, idx + 8));
+                                lv.EnsureVisible(idx);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
                 }
                 UpdateHeader();
                 UpdateButtons();
                 header.Tick = tickN;
-                header.Invalidate();
-                lv.Invalidate();
-                if (jobBox.Visible) jobBox.Invalidate();
+                if (headerDirty || header.Marquee) header.Invalidate();
+                // the rows only change while a job runs, when the count changes or when a job ends
+                bool busy = running != null && !running.Finished && !running.Paused;
+                int errs = 0;
+                for (int i = 0; i < jobs.Count; i++) errs += jobs[i].Errors;
+                if (busy || cnt != paintedCount || busy != paintedBusy || errs != paintedErrs)
+                {
+                    lv.Invalidate();
+                    paintedCount = cnt;
+                    paintedBusy = busy;
+                    paintedErrs = errs;
+                }
+                if (jobBox.Visible && (busy || jobBox.Items.Count != paintedJobs))
+                {
+                    jobBox.Invalidate();
+                    paintedJobs = jobBox.Items.Count;
+                }
             }
 
             if (closeAt >= 0 && tickN >= closeAt) { exiting = true; Close(); }
@@ -3230,6 +3261,10 @@ namespace SuperCopyApp
         void UpdateHeader()
         {
             HeaderPanel h = header;
+            // remember what is on screen: the header is repainted only when it really changes
+            string oTitle = h.Title, oElapsed = h.Elapsed, oBar = h.BarText;
+            string oL = h.TxtL, oM = h.TxtM, oR = h.TxtR;
+            double oFrac = h.Frac; Color oA = h.ColA, oB = h.ColB; bool oMar = h.Marquee;
             CopyJob run = null, queued = null, last = null;
             long total = 0, done = 0, active = 0;
             int files = 0, filesDone = 0, errors = 0;
@@ -3319,6 +3354,10 @@ namespace SuperCopyApp
             string lastErr = null;
             for (int i = 0; i < jobs.Count; i++) if (jobs[i].LastError != null) lastErr = jobs[i].LastError;
             lblErr.Text = lastErr == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + lastErr;
+
+            headerDirty = oTitle != h.Title || oElapsed != h.Elapsed || oBar != h.BarText ||
+                          oL != h.TxtL || oM != h.TxtM || oR != h.TxtR ||
+                          oFrac != h.Frac || oA != h.ColA || oB != h.ColB || oMar != h.Marquee;
         }
 
         void UpdateButtons()
@@ -3608,8 +3647,8 @@ namespace SuperCopyApp
             if (r.Width <= 0 || r.Height <= 0) return;
             using (LinearGradientBrush lb = new LinearGradientBrush(r, Theme.Panel2, Theme.Panel, 90f))
                 e.Graphics.FillRectangle(lb, r);
-            using (Pen p = new Pen(Theme.Border))
             {
+                Pen p = Theme.PenBorder;
                 int sepX = L.Rtl ? r.Left : r.Right - 1;
                 e.Graphics.DrawLine(p, sepX, r.Top + 4, sepX, r.Bottom - 5);
                 e.Graphics.DrawLine(p, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);

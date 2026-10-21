@@ -1,5 +1,16 @@
 # History
 
+## Unreleased
+
+### What's new
+
+- **Less idle work**: the window no longer repaints itself four times a second when nothing changes. The header is redrawn only when a value really changes (or while the scan marquee animates), the file list only while a job runs, when a file is added or when the last job ends.
+- The background helper no longer re-reads `settings.ini` every two seconds; it only reads the file when it actually changed.
+- The queue is polled once a second instead of twice.
+- The keyboard hook only looks at the Ctrl/Alt keys for the `V` keypress instead of for every key of the whole system.
+- The progress bar keeps one shared border pen instead of creating a new one on every repaint.
+- Result: an idle Super Copy window uses no measurable CPU any more (was ~0.3% of a core).
+
 ## v3 (2026-10-21)
 
 ### What's new

@@ -92,3 +92,13 @@
 - `/todevice` silently no-ops if a SuperCopy GUI is already open (single-instance mutex path).
 - Two items can resolve to the same destination path (incl. `UniqueFile` race).
 - Free-space estimate is approximate (conflict=2 keep-both can under-count).
+## Idle CPU (2026-10-21)
+- The 250 ms timer repainted the header, the file list and the job strip on every tick, even when nothing had changed, and `UpdateHeader` rebuilt all the strings each time.
+- Now: `UpdateHeader` remembers the shown values and raises `headerDirty` only when one of them changes; the header is invalidated when `headerDirty` or while `Marquee` is on (the scan animation); the list is invalidated while a job runs, when the row count changes, when the busy state flips or when the error count changes; the job strip only while a job runs or when the job count changes.
+- The list scrolls only when the active file changes (`lastActiveRow`), not twice per tick.
+- The queue poll went from every 2nd tick to every 4th tick (1 s).
+- The `/agent` helper re-read `settings.ini` every 2 s for the whole day; it now compares `File.GetLastWriteTimeUtc` and only reads the file when it changed.
+- The keyboard hook tested Ctrl/Alt for every keypress of the whole system; it now tests the key code first and only then the modifiers.
+- `Gfx.Bar` allocated a `Pen` per call; one shared `Theme.PenBorder` is used now.
+- Verified: build + `/selftest` exit 0; a 1 GB copy shows the live progress (0% -> 59% -> 87% -> 100%) and afterwards the idle CPU is 0 ms / 12 s (old build: 31 ms / 12 s); the queue view still lists 8 rows for 2 queued jobs and both jobs copy their files.
+- Limits: the rendered pixels were not checked visually (no image reading available) - the repaint logic is verified through the live values, the row count and the CPU numbers.
