@@ -15,7 +15,7 @@
 **Lightweight, multi-threaded file copier for Windows XP → 11**<br>
 with seamless Explorer right-click integration
 
-[![Version 2.0](https://img.shields.io/badge/version-2.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 3.0](https://img.shields.io/badge/version-3.0-2EA44F?style=flat-square)](HISTORY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ with seamless Explorer right-click integration
 </div>
 
 > [!TIP]
+> **New in v3:** Super Copy can be the **default copy**: press `Ctrl+V` in a folder window and the paste is done by Super Copy (same engine, same conflict rules, XXH3 verify) instead of the shell. Switch it on/off in Settings.
+>
 > **New in v2:** every copy and move is verified with **XXH3-64**. If a checksum fails, the bad copy is removed, an overwritten file is restored, and your source is kept.
 
 ---
@@ -57,6 +59,7 @@ with seamless Explorer right-click integration
 
 - ⚡ **Fast** — multi-threaded copying with smart concurrency, auto-tuned by file size.
 - 🖱 **Explorer integration** — right-click Copy, Cut/move, Copy to dest… plus **Super Paste here** on a folder background.
+- ⭐ **Default copy** — optional background helper: `Ctrl+V` in a folder window is done by Super Copy (on by default, switchable in Settings).
 - 🔧 **Two engines** — built-in copier or optional Windows Robocopy.
 - ⚖ **Conflict handling** — overwrite, skip, keep both (rename), overwrite if newer, or ask first.
 - 📊 **Smart ordering** — big files first for better throughput.
@@ -74,6 +77,7 @@ with seamless Explorer right-click integration
 3. **Install the menu** — click **Install menu** (or run `SuperCopy.exe /install`).
 4. **Right-click** any file or folder → **Super Copy** → Copy / Cut / Copy to dest…
 5. **Paste** — right-click empty space in a folder → **Super Paste here**.
+6. **Optional** — in Settings turn on **"Use Super Copy as the default copy"**: from then on `Ctrl+V` in a folder window is copied by Super Copy.
 
 > [!TIP]
 > No admin rights required — the menu is installed per-user in `HKEY_CURRENT_USER`.
@@ -100,7 +104,7 @@ with seamless Explorer right-click integration
 <summary><b>SHA-256 checksum</b></summary>
 
 ```text
-CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
+A6A7A460BD4FC06978FAB2EBE0FA353ED41DAC4643535E5AC50493F3F54481CD
 ```
 
 </details>
@@ -119,6 +123,7 @@ CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
 - **`SuperCopy.exe /cut <paths...>`** — remember items to move.
 - **`SuperCopy.exe /paste <folder>`** — copy/move remembered items here.
 - **`SuperCopy.exe /todevice`** — copy selected items to a chosen folder.
+- **`SuperCopy.exe /agent`** — run the background helper that handles `Ctrl+V` in Explorer.
 - **`SuperCopy.exe /selftest`** — run a self-check (exit 0 if OK).
 
 ### Examples
@@ -179,6 +184,9 @@ Run `build.cmd` from the repo root.
 > [!NOTE]
 > **Settings storage**: stored in `%APPDATA%\SuperCopy\settings.ini`.
 
+> [!NOTE]
+> **Default copy helper**: it starts with Windows through the per-user entry `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (`SuperCopy.exe /agent`) and stops itself when the option is switched off.
+
 > [!TIP]
 > **Menu installation**: requires `/install` (or the **Install menu** button in Settings). **No admin rights required.**
 
@@ -186,7 +194,7 @@ Run `build.cmd` from the repo root.
 
 ## 🗂 History
 
-What's new in v2 and older releases: [HISTORY.md](HISTORY.md). v1 source and binary are archived in [`old/v1`](old/v1).
+What's new in v3 and older releases: [HISTORY.md](HISTORY.md). v1 and v2 source and binary are archived in [`old/v1`](old/v1) and [`old/v2`](old/v2).
 
 ---
 

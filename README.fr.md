@@ -15,7 +15,7 @@
 **Copieur de fichiers léger et multi-thread pour Windows XP → 11**<br>
 avec une intégration transparente au menu contextuel de l'Explorateur
 
-[![Version 2.0](https://img.shields.io/badge/version-2.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 3.0](https://img.shields.io/badge/version-3.0-2EA44F?style=flat-square)](HISTORY.md)
 [![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Plateforme : Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 </div>
 
 > [!TIP]
+> **Nouveau dans la v3 :** Super Copy peut devenir la **copie par défaut** : appuyez sur `Ctrl+V` dans une fenêtre de dossier et le collage est fait par Super Copy (même moteur, mêmes règles de conflit, vérification XXH3). Activable/désactivable dans les Paramètres.
+>
 > **Nouveau dans la v2 :** chaque copie et chaque déplacement est vérifié avec **XXH3-64**. En cas d'écart, la copie défectueuse est supprimée, le fichier écrasé est restauré et la source est conservée.
 
 ---
@@ -57,6 +59,7 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 
 - ⚡ **Rapide** — copie multi-thread avec concurrence intelligente, ajustée selon la taille des fichiers.
 - 🖱 **Intégration à l'Explorateur** — clic droit Copier, Couper/déplacer, Copier vers… plus **Coller ici** sur le fond d'un dossier.
+- ⭐ **Copie par défaut** — assistant en arrière-plan : `Ctrl+V` dans une fenêtre de dossier est traité par Super Copy (activé par défaut, réglable dans les Paramètres).
 - 🔧 **Deux moteurs** — copieur intégré ou Windows Robocopy en option.
 - ⚖ **Gestion des conflits** — remplacer, ignorer, garder les deux (renommer), remplacer si plus récent, ou demander d'abord.
 - 📊 **Ordre intelligent** — fichiers volumineux d'abord pour un meilleur débit.
@@ -74,6 +77,7 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 3. **Installez le menu** — cliquez sur **Installer le menu** (ou lancez `SuperCopy.exe /install`).
 4. **Clic droit** sur un fichier ou un dossier → **Super Copy** → Copier / Couper / Copier vers…
 5. **Collez** — clic droit dans un espace vide d'un dossier → **Coller ici**.
+6. **Optionnel** — dans les Réglages, activez **« Utiliser Super Copy comme copie par défaut »** : dès lors `Ctrl+V` dans une fenêtre de dossier est copié par Super Copy.
 
 > [!TIP]
 > Aucun droit administrateur requis — le menu est installé pour l'utilisateur courant dans `HKEY_CURRENT_USER`.
@@ -100,7 +104,7 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 <summary><b>Somme SHA-256</b></summary>
 
 ```text
-CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
+A6A7A460BD4FC06978FAB2EBE0FA353ED41DAC4643535E5AC50493F3F54481CD
 ```
 
 </details>
@@ -119,6 +123,7 @@ CED3BDCF13E3B51A929978838BDC0CE082A570A180AF49F91355E3ADCFB84647
 - **`SuperCopy.exe /cut <chemins...>`** — mémoriser des éléments à déplacer.
 - **`SuperCopy.exe /paste <dossier>`** — copier/déplacer les éléments mémorisés ici.
 - **`SuperCopy.exe /todevice`** — copier les éléments sélectionnés vers le dossier choisi.
+- **`SuperCopy.exe /agent`** — lancer l'assistant qui gère `Ctrl+V` dans l'Explorateur.
 - **`SuperCopy.exe /selftest`** — lancer l'auto-vérification (code 0 si OK).
 
 ### Exemples
@@ -186,7 +191,7 @@ Lancez `build.cmd` depuis la racine du dépôt.
 
 ## 🗂 Historique
 
-Nouveautés de la v2 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire de la v1 sont archivés dans [`old/v1`](old/v1).
+Nouveautés de la v3 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire des v1 et v2 sont archivés dans [`old/v1`](old/v1) et [`old/v2`](old/v2).
 
 ---
 

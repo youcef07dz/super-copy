@@ -10,6 +10,7 @@
 //    SuperCopy.exe /cut  <paths...>   remember items for a move (silent)
 //    SuperCopy.exe /paste <folder>    copy/move remembered items here
 //    SuperCopy.exe /queue             run jobs from the hand-off queue (elevated retry, no args)
+//    SuperCopy.exe /agent             background helper: Ctrl+V in Explorer copies with Super Copy
 //
 //  Contents (top to bottom):
 //    Program ......... entry point, command-line modes
@@ -38,6 +39,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
@@ -50,11 +52,11 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
-[assembly: System.Reflection.AssemblyFileVersion("2.0.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
 [assembly: System.Reflection.AssemblyInformationalVersion("2.0.0")]
 [assembly: System.Reflection.AssemblyTrademark("Super Copy")]
 // major part must mirror Updates.Current (v2 = 2.0.0.0); bump both + update.txt on release
-[assembly: System.Reflection.AssemblyVersion("2.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("3.0.0.0")]
 
 namespace SuperCopyApp
 {
@@ -105,6 +107,8 @@ namespace SuperCopyApp
                     case "/queue":
                         Application.Run(new MainForm(null));   // PollQueue feeds it the queued retry jobs
                         return 0;
+                    case "/agent":
+                        return HookAgent.Run();
                     case "/install":
                         Installer.Install();
                         Msg.Show(L.T("Explorer menu installed.", "تم تثبيت قائمة المستكشف.", "Menu de l'Explorateur installé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -114,6 +118,7 @@ namespace SuperCopyApp
                         Msg.Show(L.T("Explorer menu removed.", "تمت إزالة قائمة المستكشف.", "Menu de l'Explorateur supprimé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
                     default:
+                        HookAgent.Ensure();     // the helper starts with Windows while it is the default copy
                         Application.Run(new SettingsForm());
                         return 0;
                 }
@@ -279,6 +284,7 @@ namespace SuperCopyApp
         const int DefaultConflict = 0;
         const int DefaultEngine = 0;
         const bool DefaultVerify = true;
+        const bool DefaultDefaultCopy = true;    // Ctrl+V in Explorer is done by Super Copy
 
         public static volatile int Concurrency = DefaultConcurrency;   // simultaneous file copies (1..32) when smart disabled
         public static volatile bool SmartConcurrency = true;           // use file-size based concurrency (default)
@@ -288,6 +294,7 @@ namespace SuperCopyApp
         public static int AskPrompting;               // 1 while a worker owns the "ask first" dialog (Interlocked)
         public static volatile int Engine = DefaultEngine;             // 0 built-in, 1 robocopy
         public static volatile bool Verify = DefaultVerify;            // hash source+destination after every copy/move
+        public static volatile bool DefaultCopy = DefaultDefaultCopy;  // Ctrl+V in Explorer runs Super Copy instead of the shell
         public static bool RobocopyAvailable { get { try { return File.Exists(Path.Combine(Environment.SystemDirectory, "robocopy.exe")); } catch { return false; } } }
         public static bool AutoClose = false;
         public static bool Compact = false;           // start in compact (header-only) mode
@@ -315,6 +322,7 @@ namespace SuperCopyApp
                         case "conflict": if (int.TryParse(v, out n)) Conflict = Clamp(n, 0, 4); break;
                         case "engine": if (int.TryParse(v, out n)) Engine = Clamp(n, 0, 1); break;
                         case "verify": Verify = (v == "1"); break;
+                        case "defaultcopy": DefaultCopy = (v == "1"); break;
                         case "autoclose": AutoClose = (v == "1"); break;
                         case "compact": Compact = (v == "1"); break;
                         case "language": if (int.TryParse(v, out n)) Language = Clamp(n, 0, 3); break;
@@ -335,6 +343,7 @@ namespace SuperCopyApp
                     "Conflict=" + Conflict,
                     "Engine=" + Engine,
                     "Verify=" + (Verify ? "1" : "0"),
+                    "DefaultCopy=" + (DefaultCopy ? "1" : "0"),
                     "AutoClose=" + (AutoClose ? "1" : "0"),
                     "Compact=" + (Compact ? "1" : "0"),
                     "Language=" + Language }, null);
@@ -352,6 +361,7 @@ namespace SuperCopyApp
             Conflict = DefaultConflict;
             Engine = DefaultEngine;
             Verify = DefaultVerify;
+            DefaultCopy = DefaultDefaultCopy;
             AutoClose = false;
             Language = 0;
         }
@@ -508,6 +518,23 @@ namespace SuperCopyApp
     }
 
     // ================================================================
+    //  a hidden window that never steals the focus
+    // ================================================================
+    class HostForm : Form
+    {
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x08000000;      // WS_EX_NOACTIVATE
+                return cp;
+            }
+        }
+    }
+
+    // ================================================================
     //  Elevation (UAC): detect admin, relaunch elevated for retries
     // ================================================================
     static class Admin
@@ -545,7 +572,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 2;   // must match AssemblyVersion's major part
+        public const int Current = 3;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
@@ -757,11 +784,15 @@ namespace SuperCopyApp
             }
             catch { }
             ShellIntegration.Install(Paths.ExeInstalled);
+            HookAgent.Enable();   // default copy: start the helper + autostart
         }
 
         public static void Remove()
         {
             ShellIntegration.Uninstall();
+            HookAgent.Disable();
+            Settings.DefaultCopy = false;
+            Settings.Save();
             try
             {
                 if (!File.Exists(Paths.ExeInstalled)) return;
@@ -771,6 +802,446 @@ namespace SuperCopyApp
                 else File.Delete(Paths.ExeInstalled);
             }
             catch { }
+        }
+    }
+
+    // ================================================================
+    //  Default-copy agent  (SuperCopy.exe /agent)
+    //
+    //  A small background helper that takes over Ctrl+V inside
+    //  Explorer: the paste is done by Super Copy (same engine, same
+    //  conflict rules, XXH3 verify, progress window) instead of the
+    //  shell's own copy.  It watches Ctrl+V only, only while an
+    //  Explorer window has the focus, and never stores a keystroke.
+    // ================================================================
+    static class HookAgent
+    {
+        delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct GuiThreadInfo
+        {
+            public int cbSize, flags;
+            public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret;
+            public Rectangle rcCaret;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, StringBuilder s, int n);
+        [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto)] static extern IntPtr GetModuleHandle(string name);
+        [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint idThread, ref GuiThreadInfo gti);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
+        [DllImport("user32.dll")] static extern bool OpenClipboard(IntPtr hWndNewOwner);
+        [DllImport("user32.dll")] static extern bool CloseClipboard();
+        [DllImport("user32.dll")] static extern IntPtr GetClipboardData(uint uFormat);
+        [DllImport("shell32.dll", CharSet = CharSet.Auto)] static extern uint DragQueryFile(IntPtr hDrop, uint iFile, StringBuilder lpszFile, int cch);
+
+        const int WH_KEYBOARD_LL = 13;
+        const int WM_KEYDOWN = 0x0100;
+        const uint CF_HDROP = 15;
+        const uint CF_PREFERREDDROPEFFECT = 11;
+        const int DROPEFFECT_MOVE = 2;
+
+        static HookProc proc;                       // keep the delegate alive
+        static IntPtr hook = IntPtr.Zero;
+        static ApplicationContext ctx;
+        static Form host;                           // hidden window: marshals work onto the UI thread
+        static NotifyIcon tray;
+        static System.Windows.Forms.Timer watch;
+        static MainForm win;                        // the progress window of the agent
+        static bool pasteBusy;
+
+        // ------------------------------------------------------------
+        //  run / stop
+        // ------------------------------------------------------------
+        public static int Run()
+        {
+            bool created;
+            Mutex m = new Mutex(true, "SuperCopy_Agent_v1", out created);
+            if (!created) { m.Close(); return 0; }     // already running
+            try
+            {
+                if (!Settings.DefaultCopy) return 0;  // switched off meanwhile
+
+                host = new HostForm();
+                host.ShowInTaskbar = false;
+                host.StartPosition = FormStartPosition.Manual;
+                host.Location = new Point(-32000, -32000);
+                host.Size = new Size(1, 1);
+                IntPtr hh = host.Handle;               // create the handle for BeginInvoke
+                if (hh == IntPtr.Zero) return 1;
+
+                ctx = new ApplicationContext();
+                ctx.MainForm = host;   // the hidden window keeps the message loop alive
+
+                tray = new NotifyIcon();
+                tray.Icon = IconMaker.MakeIcon();
+                tray.Text = "Super Copy";
+                tray.Visible = true;
+                ContextMenu menu = new ContextMenu();
+                menu.MenuItems.Add(L.T("Settings", "الإعدادات", "Paramètres"), new EventHandler(OpenSettings));
+                menu.MenuItems.Add("-");
+                menu.MenuItems.Add(L.T("Exit", "خروج", "Quitter"), new EventHandler(Stop));
+                tray.ContextMenu = menu;
+
+                watch = new System.Windows.Forms.Timer();
+                watch.Interval = 2000;
+                watch.Tick += new EventHandler(Watch);
+                watch.Start();
+
+                proc = new HookProc(Hook);
+                try { hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(null), 0); }
+                catch (Exception ex) { Msg.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); return 1; }
+
+                Application.Run(ctx);
+                return 0;
+            }
+            finally
+            {
+                if (hook != IntPtr.Zero) { try { UnhookWindowsHookEx(hook); } catch { } hook = IntPtr.Zero; }
+                if (watch != null) { try { watch.Stop(); watch.Dispose(); } catch { } watch = null; }
+                if (tray != null) { try { tray.Visible = false; tray.Dispose(); } catch { } tray = null; }
+                if (host != null) { try { host.Dispose(); } catch { } host = null; }
+                try { m.ReleaseMutex(); } catch { }
+                m.Close();
+            }
+        }
+
+        // the helper follows the setting: it leaves when the option is switched off
+        static void Watch(object s, EventArgs e)
+        {
+            try
+            {
+                Settings.Load();
+                if (!Settings.DefaultCopy) Stop(s, e);
+            }
+            catch { }
+        }
+
+        static void Stop(object s, EventArgs e)
+        {
+            try { if (ctx != null) ctx.ExitThread(); } catch { }
+        }
+
+        static void OpenSettings(object s, EventArgs e)
+        {
+            try { Process.Start(new ProcessStartInfo(ExePath(), "/settings")); } catch { }
+        }
+
+        // ------------------------------------------------------------
+        //  enabling / disabling the helper
+        // ------------------------------------------------------------
+        public static void Apply()
+        {
+            if (Settings.DefaultCopy) Enable(); else Disable();
+        }
+
+        // the startup entry follows the option: the helper runs with Windows
+        // while Super Copy is the default copy
+        public static void Ensure()
+        {
+            if (Settings.DefaultCopy) { Autostart(true); Start(); }
+            else Autostart(false);
+        }
+
+        public static void Enable()
+        {
+            Autostart(true);
+            Start();
+        }
+
+        public static void Disable()
+        {
+            Autostart(false);
+        }
+
+        static void Autostart(bool on)
+        {
+            try
+            {
+                using (RegistryKey r = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+                {
+                    if (r == null) return;
+                    if (on) r.SetValue("SuperCopy", "\"" + ExePath() + "\" /agent");
+                    else r.DeleteValue("SuperCopy", false);
+                }
+            }
+            catch { }
+        }
+
+        public static void Start()
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(ExePath(), "/agent");
+                psi.UseShellExecute = false;
+                Process.Start(psi);
+            }
+            catch { }
+        }
+
+        static string ExePath()
+        {
+            try { if (File.Exists(Paths.ExeInstalled)) return Paths.ExeInstalled; } catch { }
+            return Application.ExecutablePath;
+        }
+
+        // ------------------------------------------------------------
+        //  keyboard hook
+        // ------------------------------------------------------------
+        static IntPtr Hook(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0 && (int)wParam == WM_KEYDOWN)
+                {
+                    int vk = Marshal.ReadInt32(lParam) & 0xFF;
+                    if ((GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
+                    {
+                        if (vk == 0x56)                       // V -> paste
+                        {
+                            IntPtr fg = GetForegroundWindow();
+                            if (IsExplorer(fg) && !InEditBox(fg))
+                            {
+                                Post(fg);
+                                return new IntPtr(1);          // swallow: Explorer must not paste
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return CallNextHookEx(hook, nCode, wParam, lParam);
+        }
+
+        static void Post(IntPtr fg)
+        {
+            try { host.BeginInvoke(new MethodInvoker(delegate { OnKey(fg); })); }
+            catch { }
+        }
+
+        static void OnKey(IntPtr fg)
+        {
+            if (pasteBusy) return;
+            pasteBusy = true;
+            try { Paste(fg); }
+            finally { pasteBusy = false; }
+        }
+
+        static void Paste(IntPtr fg)
+        {
+            List<string> src = new List<string>();
+            bool move;
+            src = ClipFiles(out move);          // Explorer keeps the cut/copy flag on the clipboard
+            if (src.Count == 0)
+            {
+                Msg.Show(L.T("Nothing to paste: the clipboard holds no files.",
+                             "لا يوجد ما يتم لصقه: الحافظة لا تحتوي على ملفات.",
+                             "Rien à coller : le presse-papiers ne contient aucun fichier."),
+                         "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string dest = ExplorerDest(fg);
+            if (dest == null || !Directory.Exists(dest))
+            {
+                Msg.Show(L.T("Cannot find the destination folder.",
+                             "تعذّر العثور على مجلد الوجهة.",
+                             "Dossier de destination introuvable."),
+                         "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            RunJob(src, dest, move);
+        }
+
+        // a running Super Copy window takes the job, otherwise we do it here
+        static void RunJob(List<string> src, string dest, bool move)
+        {
+            bool created;
+            Mutex m = new Mutex(true, "SuperCopy_MainInstance_v1", out created);
+            if (!created)
+            {
+                m.Close();
+                QueueStore.Enqueue(move, dest, src);   // the open window picks it up
+                return;
+            }
+            try
+            {
+                if (win == null || win.IsDisposed)
+                {
+                    win = new MainForm(null);
+                    win.FormClosed += delegate(object s, FormClosedEventArgs e) { win = null; };
+                    win.Show();
+                }
+                win.AddJob(new CopyJob(src, dest, move));
+                try { win.Activate(); } catch { }
+            }
+            finally
+            {
+                try { m.ReleaseMutex(); } catch { }
+                m.Close();
+            }
+        }
+
+        // ------------------------------------------------------------
+        //  clipboard (the file list Explorer put there)
+        // ------------------------------------------------------------
+        static List<string> ClipFiles(out bool move)
+        {
+            List<string> r = new List<string>();
+            move = false;
+            bool open = false;
+            for (int i = 0; i < 5 && !open; i++)
+            {
+                try { open = OpenClipboard(IntPtr.Zero); } catch { }
+                if (!open) Thread.Sleep(20);
+            }
+            if (!open) return r;
+            try
+            {
+                IntPtr pref = GetClipboardData(CF_PREFERREDDROPEFFECT);
+                if (pref != IntPtr.Zero) move = (Marshal.ReadInt32(pref) == DROPEFFECT_MOVE);
+                IntPtr h = GetClipboardData(CF_HDROP);
+                if (h == IntPtr.Zero) return r;
+                uint n = DragQueryFile(h, 0xFFFFFFFF, null, 0);
+                for (uint i = 0; i < n; i++)
+                {
+                    StringBuilder sb = new StringBuilder(1024);
+                    if (DragQueryFile(h, i, sb, sb.Capacity) > 0) r.Add(sb.ToString());
+                }
+            }
+            catch { }
+            finally { try { CloseClipboard(); } catch { } }
+            return r;
+        }
+
+        // ------------------------------------------------------------
+        //  Explorer: which window, which folder, which selection
+        // ------------------------------------------------------------
+        static object FindWindow(IntPtr fg)
+        {
+            try
+            {
+                Type t = Type.GetTypeFromProgID("Shell.Application");
+                if (t == null) return null;
+                object shell = Activator.CreateInstance(t);
+                object windows = Invoke(shell, "Windows");
+                if (windows == null) return null;
+                foreach (object w in (System.Collections.IEnumerable)windows)
+                {
+                    try { if (Convert.ToInt64(Get(w, "HWND")) == fg.ToInt64()) return w; } catch { }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        // one selected folder -> paste into it, otherwise the folder of the window
+        static string ExplorerDest(IntPtr fg)
+        {
+            try
+            {
+                object w = FindWindow(fg);
+                if (w != null)
+                {
+                    try
+                    {
+                        object doc = Get(w, "Document");
+                        object items = Get(doc, "SelectedItems");
+                        if (items != null && Convert.ToInt32(Get(items, "Count")) == 1)
+                        {
+                            string p = (string)Get(Invoke(items, "Item", 1), "Path");
+                            if (p != null && Directory.Exists(p)) return p;
+                        }
+                    }
+                    catch { }
+                    try
+                    {
+                        string path = UrlToPath((string)Get(w, "LocationURL"));
+                        if (path != null) return path;
+                    }
+                    catch { }
+                }
+                if (IsDesktop(ClassName(fg)))
+                    return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            }
+            catch { }
+            return null;
+        }
+
+        // late binding for the Shell.Application COM objects
+        // (GetProperty alone fails on SelectedItems: the binder only finds it
+        //  when the method flag is there as well)
+        static object Get(object o, string name)
+        {
+            return o.GetType().InvokeMember(name, BindingFlags.GetProperty | BindingFlags.InvokeMethod, null, o, null);
+        }
+
+        static object Invoke(object o, string name, params object[] args)
+        {
+            return o.GetType().InvokeMember(name, BindingFlags.InvokeMethod, null, o, args);
+        }
+
+        public static string UrlToPath(string url)
+        {
+            if (url == null) return null;
+            try
+            {
+                if (!url.StartsWith("file:")) return null;
+                string p = new Uri(url).LocalPath;
+                if (p.Length > 3 && p.EndsWith("\\")) p = p.Substring(0, p.Length - 1);
+                return p;
+            }
+            catch { return null; }
+        }
+
+        // ------------------------------------------------------------
+        //  window helpers
+        // ------------------------------------------------------------
+        public static bool IsExplorerClass(string cls)
+        {
+            return cls == "CabinetWClass" || IsDesktop(cls);
+        }
+
+        static bool IsDesktop(string cls)
+        {
+            return cls == "Progman" || cls == "WorkerW";
+        }
+
+        static bool IsExplorer(IntPtr h)
+        {
+            return IsExplorerClass(ClassName(h));
+        }
+
+        static string ClassName(IntPtr h)
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder(64);
+                GetClassName(h, sb, sb.Capacity);
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        // an open text box (address bar, rename) must keep its own Ctrl+V
+        static bool InEditBox(IntPtr fg)
+        {
+            try
+            {
+                uint tid = GetWindowThreadProcessId(fg, IntPtr.Zero);
+                GuiThreadInfo gti = new GuiThreadInfo();
+                gti.cbSize = Marshal.SizeOf(typeof(GuiThreadInfo));
+                if (!GetGUIThreadInfo(tid, ref gti)) return false;
+                if (gti.hwndFocus == IntPtr.Zero) return false;
+                string c = ClassName(gti.hwndFocus);
+                return c == "Edit" || c == "ComboBox" || c == "msctls_edit" ||
+                       c == "RICHEDIT" || c == "RICHEDIT50W";
+            }
+            catch { return false; }
         }
     }
 
@@ -1679,6 +2150,14 @@ namespace SuperCopyApp
                         if (dr != null) return 17;      // drive has no Super Copy entry
                 }
             }
+
+            // default-copy helper: on by default, knows the Explorer windows and
+            // turns a shell URL into a folder path
+            if (!Settings.DefaultCopy) return 29;
+            if (HookAgent.UrlToPath("file:///C:/Temp/") != "C:\\Temp") return 29;
+            if (HookAgent.UrlToPath("http://example.com/x") != null) return 29;
+            if (!HookAgent.IsExplorerClass("CabinetWClass")) return 29;
+            if (HookAgent.IsExplorerClass("Notepad")) return 29;
             return 0;
         }
 
@@ -2072,7 +2551,9 @@ namespace SuperCopyApp
     class HeaderPanel : Panel
     {
         public string Title = "", Elapsed = "0:00", BarText = "", TxtL = "", TxtM = "", TxtR = "";
-        public double Frac;
+        public double Frac;                 // all files of the job
+        public double FileFrac;             // the file being copied right now
+        public string FileText = "";
         public bool Marquee;
         public int Tick;
         public Color ColA = Theme.Cyan, ColB = Theme.Violet;
@@ -2142,7 +2623,11 @@ namespace SuperCopyApp
             Rectangle bar = new Rectangle(14, 42, Width - 28, 26);
             Gfx.Bar(g, bar, Frac, ColA, ColB, BarText, Marquee, Tick, 8);
 
-            Rectangle sr = new Rectangle(14, 74, Width - 28, 20);
+            // second bar: the file that is being copied right now (same size as the first)
+            Rectangle fbar = new Rectangle(14, 72, Width - 28, 26);
+            Gfx.Bar(g, fbar, FileFrac, Theme.Cyan, Theme.Violet, FileText, false, 0, 8);
+
+            Rectangle sr = new Rectangle(14, 102, Width - 28, 20);
             TextRenderer.DrawText(g, TxtL, Theme.Bold, sr, Theme.Text,
                 L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(g, TxtM, Theme.Bold, sr, Theme.Text,
@@ -2327,8 +2812,8 @@ namespace SuperCopyApp
 
             // ----- header -----
             header = new HeaderPanel();
-            header.Dock = DockStyle.Top;
-            header.Height = 104;
+        header.Dock = DockStyle.Top;
+        header.Height = 132;
             btnHide = UI.MakeButton(L.T("Hide", "إخفاء", "Masquer"), 70, Color.FromArgb(70, 90, 170));
             btnHide.Height = 26;
             header.HideButton = btnHide;
@@ -2481,7 +2966,7 @@ namespace SuperCopyApp
         }
 
         // ------------------------------------------------------------
-        void AddJob(CopyJob j)
+        public void AddJob(CopyJob j)
         {
             jobs.Add(j);
             lastDest = j.Dest;
@@ -2492,6 +2977,7 @@ namespace SuperCopyApp
             jobBox.Visible = multi && !compact;
             jobBox.Height = Math.Min(jobs.Count, 4) * 26 + 2;
             if (cur == null) SetCur(j);
+            ShowOnTop();      // the user has to see the copy that just started
         }
 
         void SetCur(CopyJob j)
@@ -2672,6 +3158,7 @@ namespace SuperCopyApp
             int errs = 0;
             bool canc = false;
             for (int i = 0; i < jobs.Count; i++) { errs += jobs[i].Errors; canc = canc || jobs[i].Cancelled; }
+            try { TopMost = false; } catch { }      // back to the normal z-order
             if (errs > 0 || canc)
             {
                 if (!Visible) ShowFromTray();     // let the user see what happened
@@ -2701,6 +3188,13 @@ namespace SuperCopyApp
             h.Marquee = false;
             h.Frac = j.Fraction;
             h.TxtR = filesTxt;
+
+            // the file that is being copied right now (the one the list highlights)
+            int fi = j.FirstActiveIndex();
+            CopyItem fit = fi >= 0 ? j.GetItem(fi) : null;
+            h.FileFrac = fit == null ? 0 : fit.Fraction;
+            h.FileText = fit == null || fit.Src == null ? ""
+                       : fit.Name + "   " + ((int)(h.FileFrac * 100)) + "%   " + Fmt.Size(fit.Size);
 
             if (!j.Started)
             {
@@ -2888,6 +3382,21 @@ namespace SuperCopyApp
         {
             tray.Visible = true;
             Hide();
+        }
+
+        // the copy window must be seen: it stays above the Explorer window
+        // while the job runs and comes back to the normal z-order afterwards
+        public void ShowOnTop()
+        {
+            try
+            {
+                if (!Visible) Show();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                TopMost = true;
+                Activate();
+                BringToFront();
+            }
+            catch { }
         }
 
         void ShowFromTray()
@@ -3130,7 +3639,7 @@ namespace SuperCopyApp
         NumericUpDown numConc;
         CheckBox chkSmartConc;
         ComboBox cmbBuf, cmbConf, cmbEngine, cmbLang;
-        CheckBox chkClose, chkVerify;
+        CheckBox chkClose, chkVerify, chkDefault;
         Label lblState;
         bool startupChecked;   // startup install/update suggestion runs once per window
         static readonly int[] BufSizes = new int[] { 64, 256, 1024, 4096 };
@@ -3154,7 +3663,7 @@ namespace SuperCopyApp
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 548);
+            ClientSize = new Size(430, 578);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
             L.ApplyRtl(this, true);
@@ -3260,38 +3769,49 @@ namespace SuperCopyApp
             chkVerify.Location = new Point(20, 320);
             Controls.Add(chkVerify);
 
-            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 360, Theme.Cyan));
+            chkDefault = new CheckBox();
+            chkDefault.Text = L.T("Use Super Copy as the default copy (Ctrl+V in Explorer)",
+                                  "استخدام Super Copy كنسخ افتراضي (Ctrl+V في المستكشف)",
+                                  "Utiliser Super Copy comme copie par défaut (Ctrl+V dans l'Explorateur)");
+            chkDefault.AutoSize = true;
+            chkDefault.ForeColor = Theme.Text;
+            chkDefault.BackColor = Theme.Bg;
+            chkDefault.Checked = Settings.DefaultCopy;
+            chkDefault.Location = new Point(20, 346);
+            Controls.Add(chkDefault);
+
+            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 390, Theme.Cyan));
             Button bi2 = UI.MakeButton(L.T("Install menu", "تثبيت القائمة", "Installer le menu"), 180, Color.FromArgb(40, 150, 100));
             Button br = UI.MakeButton(L.T("Remove menu", "إزالة القائمة", "Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
-            bi2.Location = new Point(20, 382);
-            br.Location = new Point(220, 382);
+            bi2.Location = new Point(20, 412);
+            br.Location = new Point(220, 412);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
             Controls.Add(bi2);
             Controls.Add(br);
-            lblState = MakeLabel("", 20, 420, Theme.Dim);
+            lblState = MakeLabel("", 20, 450, Theme.Dim);
             Controls.Add(lblState);
             Controls.Add(MakeLabel(L.T("Windows 11: entries are under \"Show more options\" (Shift+F10).",
                                        "ويندوز 11: تظهر الإدخالات تحت \"إظهار المزيد من الخيارات\" (Shift+F10).",
-                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 440, Theme.Dim));
+                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 470, Theme.Dim));
             RefreshState();
 
-            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 478, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 508, Theme.Text));
             Button babt = UI.MakeButton(L.T("About", "حول", "À propos"), 84, Color.FromArgb(90, 96, 130));
-            babt.Location = new Point(132, 472);
+            babt.Location = new Point(132, 502);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
             Button bupd = UI.MakeButton(L.T("Check for updates", "التحقق من التحديثات", "Rechercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
-            bupd.Location = new Point(226, 472);
+            bupd.Location = new Point(226, 502);
             bupd.Click += new EventHandler(OnCheckUpdate);
             Controls.Add(bupd);
 
             Button ok = UI.MakeButton(L.T("Save", "حفظ", "Enregistrer"), 90, Color.FromArgb(70, 90, 170));
             Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
             Button reset = UI.MakeButton(L.T("Reset to default", "استعادة الافتراضي", "Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
-            ok.Location = new Point(236, 512);
-            cancel.Location = new Point(334, 512);
-            reset.Location = new Point(20, 512);
+            ok.Location = new Point(236, 542);
+            cancel.Location = new Point(334, 542);
+            reset.Location = new Point(20, 542);
             ok.Click += new EventHandler(OnSave);
             cancel.Click += new EventHandler(OnCancel);
             reset.Click += new EventHandler(OnReset);
@@ -3380,10 +3900,12 @@ namespace SuperCopyApp
             Settings.Conflict = Math.Max(0, cmbConf.SelectedIndex);
             Settings.Engine = Math.Max(0, cmbEngine.SelectedIndex);
             Settings.Verify = chkVerify.Checked;
+            Settings.DefaultCopy = chkDefault.Checked;
             Settings.AutoClose = chkClose.Checked;
             Settings.Language = Math.Max(0, Math.Min(3, cmbLang.SelectedIndex));
             L.Apply(Settings.Language);
             Settings.Save();
+            HookAgent.Apply();   // start/stop the default-copy helper
             // menu labels live in the registry: rewrite them for the current language
             if (ShellIntegration.IsInstalled())
             {
@@ -3416,6 +3938,7 @@ namespace SuperCopyApp
             cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
             cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
             chkVerify.Checked = Settings.Verify;
+            chkDefault.Checked = Settings.DefaultCopy;
             chkClose.Checked = Settings.AutoClose;
             cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
         }
