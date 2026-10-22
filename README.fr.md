@@ -106,7 +106,7 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 <summary><b>Somme SHA-256</b></summary>
 
 ```text
-E989B205200F1419DF9D37B9523BDCD324BE09060DFE9F3D39A9C1CCEEF34EC8
+4523E8783D310B8F635ADE13EB99827CD4EC4BE9BD27C2CD5195B728A67109B0
 ```
 
 </details>
