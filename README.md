@@ -195,6 +195,17 @@ Run `build.cmd` from the repo root.
 > [!TIP]
 > **Menu installation**: requires `/install` (or the **Install menu** button in Settings). **No admin rights required.**
 
+> [!IMPORTANT]
+> **If your antivirus complains**: `SuperCopy.exe` is unsigned, so Windows Defender's machine-learning classifier (detection names like `Trojan:Win32/Wacatac.B!ml` or `Bearfoos.A!ml`) can flag the freshly downloaded file or the installed helper copy in `%APPDATA%\SuperCopy`. The classifier fires on a heuristic/ML pattern (small unsigned app that copies itself into a user folder and starts with Windows), not on anything found in the code itself.
+>
+> If the file gets quarantined on your PC:
+> 1. Verify the file you downloaded against the SHA-256 in the [Download section](#-download).
+> 2. Restore it in *Windows Security → Protection history* (or re-download from GitHub).
+> 3. Add an antivirus exclusion for the folder `%APPDATA%\SuperCopy` so the installed helper stays put.
+> 4. Help everyone: report the false positive at the [Microsoft Security Intelligence file submission](https://www.microsoft.com/en-us/wdsi/filesubmission) page — it is usually whitelisted within a day or two.
+>
+> The official [`SuperCopy.exe` releases](https://github.com/youcef07dz/super-copy/releases) are rebuilt once and never recompiled between releases: the hash above stays valid for the whole release's lifetime.
+
 ---
 
 ## 🗂 History
