@@ -196,7 +196,7 @@ Lancez `build.cmd` depuis la racine du dépôt.
 > **Si votre antivirus s'inquiète** : `SuperCopy.exe` n'est pas signé, donc le classificateur à apprentissage automatique de Windows Defender (noms de détection comme `Trojan:Win32/Wacatac.B!ml` ou `Bearfoos.A!ml`) peut signaler le fichier téléchargé ou la copie installée dans `%APPDATA%\SuperCopy`. Il s'agit d'une heuristique/IA (petite application non signée qui se copie dans un dossier utilisateur et démarre avec Windows), rien de tel n'a été trouvé dans le code lui-même.
 >
 > Si le fichier est mis en quarantaine :
-> 1. Vérifiez le fichier téléchargé avec la somme SHA-256 de la [section Télécharger](#dYZ- Tlchargement).
+> 1. Vérifiez le fichier téléchargé avec la somme SHA-256 de la [section Télécharger](#-téléchargement).
 > 2. Restaurez-le dans *Sécurité Windows → Historique de protection* (ou retéléchargez-le depuis GitHub).
 > 3. Ajoutez une exclusion d'antivirus pour le dossier `%APPDATA%\SuperCopy` afin que la copie installée reste en place.
 > 4. Aidez tout le monde : signalez le faux positif sur la page [Microsoft Security Intelligence, soumission de fichier](https://www.microsoft.com/en-us/wdsi/filesubmission) — la liste blanche arrive généralement en un jour ou deux.
