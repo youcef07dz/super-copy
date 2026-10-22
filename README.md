@@ -15,7 +15,7 @@
 **Lightweight, multi-threaded file copier for Windows XP → 11**<br>
 with seamless Explorer right-click integration
 
-[![Version 3.0](https://img.shields.io/badge/version-3.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ with seamless Explorer right-click integration
 </div>
 
 > [!TIP]
+> **New in v4:** the file list got its **own designed scrollbars** (click to jump, drag the thumb), the file under the mouse gets a proper hover tint, and the whole app is **DPI aware** - crisp list columns and row heights at 125-200% scaling. Verify passes cost about half: the source is hashed *while it is copied*.
+>
 > **New in v3:** Super Copy can be the **default copy**: press `Ctrl+V` in a folder window and the paste is done by Super Copy (same engine, same conflict rules, XXH3 verify) instead of the shell. Switch it on/off in Settings.
 >
 > **New in v2:** every copy and move is verified with **XXH3-64**. If a checksum fails, the bad copy is removed, an overwritten file is restored, and your source is kept.
@@ -104,7 +106,7 @@ with seamless Explorer right-click integration
 <summary><b>SHA-256 checksum</b></summary>
 
 ```text
-E989B205200F1419DF9D37B9523BDCD324BE09060DFE9F3D39A9C1CCEEF34EC8
+CBF104E6FD4D09F50D6E70536A5889710495DCA7E4C93D23EC78822732ED3B6D
 ```
 
 </details>
@@ -197,7 +199,7 @@ Run `build.cmd` from the repo root.
 
 ## 🗂 History
 
-What's new in v3 and older releases: [HISTORY.md](HISTORY.md). v1 and v2 source and binary are archived in [`old/v1`](old/v1) and [`old/v2`](old/v2).
+What's new in v4 and older releases: [HISTORY.md](HISTORY.md). v1, v2 and v3 source and binary are archived in [`old/v1`](old/v1), [`old/v2`](old/v2) and [`old/v3`](old/v3).
 
 ---
 

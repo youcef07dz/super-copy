@@ -52,11 +52,11 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
-[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("4.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("4.0.0")]
 [assembly: System.Reflection.AssemblyTrademark("Super Copy")]
-// major part must mirror Updates.Current (v2 = 2.0.0.0); bump both + update.txt on release
-[assembly: System.Reflection.AssemblyVersion("3.0.0.0")]
+// major part must mirror Updates.Current (v4 = 4.0.0.0); bump both + update.txt on release
+[assembly: System.Reflection.AssemblyVersion("4.0.0.0")]
 
 namespace SuperCopyApp
 {
@@ -613,7 +613,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 3;   // must match AssemblyVersion's major part
+        public const int Current = 4;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
@@ -631,28 +631,69 @@ namespace SuperCopyApp
             catch { return 0; }
         }
 
-        public static void Check(Form owner)
+        static bool checking;
+
+        // the web request runs on a thread-pool thread: the settings window never
+        // freezes while GitHub answers, and the request gets a 10 s timeout instead
+        // of WebClient's default 100 s
+        public static void Check(Form owner, Button btn)
         {
-            int latest;
+            if (checking) return;
+            checking = true;
+            if (btn != null)
+            {
+                try { btn.Text = L.T("Checking...", "جارٍ التحقق...", "Vérification..."); btn.Enabled = false; } catch { }
+            }
+            ThreadPool.QueueUserWorkItem(new WaitCallback(delegate
+            {
+                int latest = 0;
+                string err = null;
+                try
+                {
+                    try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }  // TLS 1.2 (needed for GitHub; or-ed in so nothing stops working)
+                    HttpWebRequest rq = (HttpWebRequest)WebRequest.Create(UpdateTxtUrl);
+                    rq.Timeout = 10000;
+                    rq.ReadWriteTimeout = 10000;
+                    using (HttpWebResponse rp = (HttpWebResponse)rq.GetResponse())
+                    using (StreamReader sr = new StreamReader(rp.GetResponseStream(), Encoding.UTF8))
+                        latest = ParseVersion(sr.ReadToEnd());
+                }
+                catch (Exception ex) { err = ex.Message; }
+                checking = false;
+                Done(owner, btn, latest, err);
+            }));
+        }
+
+        // back on the UI thread: restore the button and show the result
+        static void Done(Form owner, Button btn, int latest, string err)
+        {
             try
             {
-                try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { }  // TLS 1.2 (needed for GitHub)
-                using (WebClient wc = new WebClient())
-                    latest = ParseVersion(wc.DownloadString(UpdateTxtUrl));
+                if (owner == null || owner.IsDisposed || !owner.IsHandleCreated) return;
+                owner.BeginInvoke(new MethodInvoker(delegate
+                {
+                    if (owner.IsDisposed) return;
+                    if (btn != null)
+                    {
+                        btn.Text = L.T("&Check for updates", "التحقق من التحديثات (&C)", "Rec&hercher des mises à jour");
+                        btn.Enabled = true;
+                    }
+                    if (err != null)
+                    {
+                        Msg.Show(owner, L.T("Could not check for updates:\n", "تعذّر التحقق من التحديثات:\n", "Impossible de vérifier les mises à jour :\n") + err, "Super Copy",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    if (latest <= Current)
+                    {
+                        Msg.Show(owner, L.T("You already have the latest version (v", "لديك بالفعل أحدث إصدار (v", "Vous avez déjà la dernière version (v") + Current + ").", "Super Copy",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    OfferUpdate(owner, latest);
+                }));
             }
-            catch (Exception ex)
-            {
-                Msg.Show(owner, L.T("Could not check for updates:\n", "تعذّر التحقق من التحديثات:\n", "Impossible de vérifier les mises à jour :\n") + ex.Message, "Super Copy",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-            if (latest <= Current)
-            {
-                Msg.Show(owner, L.T("You already have the latest version (v", "لديك بالفعل أحدث إصدار (v", "Vous avez déjà la dernière version (v") + Current + ").", "Super Copy",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            OfferUpdate(owner, latest);
+            catch { }
         }
 
         // "version vX is available": open the release page in the browser.
@@ -1387,6 +1428,7 @@ namespace SuperCopyApp
         public static readonly Color Row1 = Color.FromArgb(24, 29, 48);
         public static readonly Color Row2 = Color.FromArgb(29, 35, 58);
         public static readonly Color Sel = Color.FromArgb(52, 68, 118);
+        public static readonly Color Hover = Color.FromArgb(37, 45, 73);   // subtle brighten, dimmer than Sel
         public static readonly Color Text = Color.FromArgb(226, 231, 247);
         public static readonly Color Dim = Color.FromArgb(138, 148, 180);
         public static readonly Color Track = Color.FromArgb(13, 16, 30);
@@ -1401,6 +1443,7 @@ namespace SuperCopyApp
         public static readonly SolidBrush BrRow1 = new SolidBrush(Row1);
         public static readonly SolidBrush BrRow2 = new SolidBrush(Row2);
         public static readonly SolidBrush BrSel = new SolidBrush(Sel);
+        public static readonly SolidBrush BrHover = new SolidBrush(Hover);
         public static readonly SolidBrush BrPanel = new SolidBrush(Panel);
         public static readonly SolidBrush BrGloss = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
         public static readonly Pen PenBorder = new Pen(Border);
@@ -1409,6 +1452,21 @@ namespace SuperCopyApp
         public static readonly Font Bold = new Font("Tahoma", 8.25f, FontStyle.Bold);
         public static readonly Font Title = new Font("Tahoma", 11f, FontStyle.Bold);
         public static readonly Font Big = new Font("Tahoma", 12f, FontStyle.Bold);
+
+        private static readonly int Dpi = DetectDpi();
+
+        // real display DPI (the desktop DC reports it under a dpiAware manifest; the
+        // manifest-less setting only ever shows 96, matching the pixel-virtualized look)
+        static int DetectDpi()
+        {
+            try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) { int v = (int)g.DpiX; return v >= 96 ? v : 96; } }
+            catch { }
+            return 96;
+        }
+
+        // 96 dpi design pixels -> device pixels: for sizes that AutoScaleMode does not
+        // reach (list columns, list rows, owner-drawn control constants)
+        public static int ScalePx(int px) { return px * Dpi / 96; }
 
         // state: 0 pending, 1 copying, 2 done, 3 error, 4 skipped, 5 cancelled
         public static void BarColors(int state, bool paused, out Color a, out Color b)
@@ -1453,6 +1511,34 @@ namespace SuperCopyApp
 
     static class Gfx
     {
+        // one gradient brush per (colour pair, size): active rows repaint their bar several
+        // times a second and building a LinearGradientBrush per call was pure garbage churn
+        class BarBrushKey { public int A, B, W, H; public LinearGradientBrush Br; }
+        static readonly List<BarBrushKey> barBrushes = new List<BarBrushKey>();
+
+        // the gradient is defined over (0,0,w,h); a use shifts it onto the real bar rect
+        // (brush transform maps brush space to world space, hence the positive shift)
+        static LinearGradientBrush BarBrush(Color a, Color b, Rectangle gr)
+        {
+            int ia = a.ToArgb(), ib = b.ToArgb();
+            for (int i = 0; i < barBrushes.Count; i++)
+            {
+                BarBrushKey k = barBrushes[i];
+                if (k.A == ia && k.B == ib && k.W == gr.Width && k.H == gr.Height)
+                {
+                    k.Br.ResetTransform();
+                    k.Br.TranslateTransform(gr.X, gr.Y, MatrixOrder.Append);
+                    return k.Br;
+                }
+            }
+            BarBrushKey n = new BarBrushKey();
+            n.A = ia; n.B = ib; n.W = gr.Width; n.H = gr.Height;
+            n.Br = new LinearGradientBrush(new Rectangle(0, 0, gr.Width, gr.Height), a, b, LinearGradientMode.Horizontal);
+            n.Br.TranslateTransform(gr.X, gr.Y, MatrixOrder.Append);
+            if (barBrushes.Count >= 24) barBrushes.RemoveAt(0);
+            barBrushes.Add(n);
+            return n.Br;
+        }
         public static GraphicsPath Round(Rectangle r, int rad)
         {
             GraphicsPath p = new GraphicsPath();
@@ -1499,8 +1585,7 @@ namespace SuperCopyApp
                 if (fr.Width > 0)
                 {
                     Rectangle gr = marquee ? fr : tr;
-                    using (LinearGradientBrush lb = new LinearGradientBrush(gr, c1, c2, LinearGradientMode.Horizontal))
-                        g.FillRectangle(lb, fr);
+                    g.FillRectangle(BarBrush(c1, c2, gr), fr);
                     g.FillRectangle(Theme.BrGloss, new Rectangle(fr.X, fr.Y, fr.Width, fr.Height / 2));
                 }
                 g.Restore(st);
@@ -1571,11 +1656,17 @@ namespace SuperCopyApp
     {
         public string Src, Dst, Name, Error;
         public long Size;
+        public string SizeText;           // Fmt.Size(Size): the list paints it on every refresh
         public long Done;                 // bytes copied (Interlocked)
         public volatile int State;        // 0 pending, 1 copying, 2 done, 3 error, 4 skipped, 5 cancelled
         public int Index;
         public double Speed;              // bytes/s (UI thread)
         public long SampBytes;
+        public ulong SrcHash;             // XXH3 over the source, computed during the copy pass
+        public bool HasSrcHash;
+        // paintime bookkeeping of the window, so a repaint can be limited to the rows that
+        // really changed (state changes, and the files that are being copied right now)
+        public int PaintedState = -1;
 
         public double Fraction
         {
@@ -1600,6 +1691,7 @@ namespace SuperCopyApp
         readonly List<CopyItem> active = new List<CopyItem>();
         readonly List<string> srcDirs = new List<string>();
         readonly object sync = new object();
+        CopyItem[] scanOrder;            // items in display order, built by the scan
         readonly object activeLock = new object();
         readonly Dictionary<string, object> dstLocks = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         readonly object dstLockMap = new object();
@@ -1632,6 +1724,15 @@ namespace SuperCopyApp
         public long DoneNow { get { return Interlocked.Read(ref DoneBytes); } }
 
         public int ItemCount { get { lock (sync) { return items.Count; } } }
+
+        // items in display order. The scan builds the array once; while it still runs a copy is
+        // made, so the window can look at the list without taking the lock for every item.
+        public CopyItem[] Snapshot()
+        {
+            CopyItem[] s = scanOrder;
+            if (s != null) return s;
+            lock (sync) { return items.ToArray(); }
+        }
 
         public CopyItem GetItem(int i)
         {
@@ -1735,21 +1836,23 @@ namespace SuperCopyApp
             t.Start();
         }
 
-        // lets the "concurrent copies" setting grow while a job is running
+        // lets the "concurrent copies" setting grow while a job is running; up to four
+        // workers per tick, one per 250 ms tick took seconds to reach the target while
+        // thousands of small files were waiting (surplus workers retire on their own)
         public void EnsureWorkers()
         {
             if (!Started || Finished || Cancelled) return;
-            bool spawn = false;
             int targetTotal = ComputeTarget(null);
+            int spawn = 0;
             lock (sync)
             {
-                if (workers > 0 && workers < targetTotal && next < items.Count)
+                while (workers > 0 && workers < targetTotal && next < items.Count && spawn < 4)
                 {
                     workers++;
-                    spawn = true;
+                    spawn++;
                 }
             }
-            if (spawn) SpawnWorker();
+            for (int i = 0; i < spawn; i++) SpawnWorker();
         }
 
         public void Cancel()
@@ -1878,34 +1981,96 @@ namespace SuperCopyApp
 
             static readonly ulong[] InitAcc = new ulong[] { P32_3, P64_1, P64_2, P64_3, P64_4, P32_2, P64_5, P32_1 };
 
+            // Windows is little-endian: the word reads are a single move there, not eight
+            static readonly bool LE = BitConverter.IsLittleEndian;
+            // the secret as 64-bit words, for the aligned offsets of the hot loop
+            static readonly ulong[] SW = new ulong[SecretSize / 8];
+
+            static XXH3()
+            {
+                for (int i = 0; i < SW.Length; i++) SW[i] = BitConverter.ToUInt64(S, i * 8);
+            }
+
+            // one buffer set per thread: hashing a thousand small files used to allocate and throw
+            // away a block buffer, a tail buffer and an accumulator for every one of them
+            [ThreadStatic] static byte[] workBuf;
+            [ThreadStatic] static byte[] tailBuf;
+            [ThreadStatic] static byte[] smallBuf;
+            [ThreadStatic] static ulong[] accBuf;
+
+            static byte[] WorkBuffer()
+            {
+                if (workBuf == null) workBuf = new byte[64 * 1024];
+                return workBuf;
+            }
+            static byte[] TailBuffer()
+            {
+                if (tailBuf == null) tailBuf = new byte[StripeLen];
+                return tailBuf;
+            }
+            static byte[] SmallBuffer()
+            {
+                if (smallBuf == null) smallBuf = new byte[241];
+                return smallBuf;
+            }
+            static ulong[] AccBuffer()
+            {
+                if (accBuf == null) accBuf = new ulong[8];
+                for (int i = 0; i < 8; i++) accBuf[i] = InitAcc[i];
+                return accBuf;
+            }
+
             public static ulong HashFile(string path)
             {
-                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan))
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 65536, FileOptions.SequentialScan))
                 {
                     long len = fs.Length;
                     if (len <= 240)
                     {
-                        byte[] small = new byte[(int)len];
-                        ReadFull(fs, small, 0, small.Length);
-                        return HashShort(small, small.Length);
+                        byte[] small = SmallBuffer();
+                        ReadFull(fs, small, 0, (int)len);
+                        return HashShort(small, (int)len);
                     }
 
-                    ulong[] acc = (ulong[])InitAcc.Clone();
-                    byte[] block = new byte[BlockLen];
-                    long blocks = (len - 1) / BlockLen;
-                    for (long b = 0; b < blocks; b++)
+                    ulong[] acc = AccBuffer();
+                    byte[] buf = WorkBuffer();
+                    long blocksLeft = (len - 1) / BlockLen;
+                    int have = 0;
+                    // 64 KB reads instead of one 1 KB read per block
+                    while (blocksLeft > 0)
                     {
-                        ReadFull(fs, block, 0, BlockLen);
-                        Accumulate(acc, block, 0, BlockLen / StripeLen);
-                        Scramble(acc, SecretSize - StripeLen);
+                        if (have < BlockLen)
+                        {
+                            int got = fs.Read(buf, have, buf.Length - have);
+                            if (got <= 0) throw new EndOfStreamException();
+                            have += got;
+                        }
+                        int off = 0;
+                        while (blocksLeft > 0 && have - off >= BlockLen)
+                        {
+                            Accumulate(acc, buf, off, BlockLen / StripeLen);
+                            Scramble(acc, SecretSize - StripeLen);
+                            off += BlockLen;
+                            blocksLeft--;
+                        }
+                        if (off > 0)
+                        {
+                            have -= off;
+                            if (have > 0) Buffer.BlockCopy(buf, off, buf, 0, have);
+                        }
                     }
-                    int stripes = (int)(((len - 1) - blocks * BlockLen) / StripeLen);
-                    if (stripes > 0)
+
+                    int stripes = (int)(((len - 1) - ((len - 1) / BlockLen) * BlockLen) / StripeLen);
+                    int need = stripes * StripeLen;
+                    while (have < need)
                     {
-                        ReadFull(fs, block, 0, stripes * StripeLen);
-                        Accumulate(acc, block, 0, stripes);
+                        int got = fs.Read(buf, have, Math.Min(buf.Length, need) - have);
+                        if (got <= 0) throw new EndOfStreamException();
+                        have += got;
                     }
-                    byte[] last = new byte[StripeLen];
+                    if (stripes > 0) Accumulate(acc, buf, 0, stripes);
+
+                    byte[] last = TailBuffer();
                     fs.Seek(len - StripeLen, SeekOrigin.Begin);
                     ReadFull(fs, last, 0, StripeLen);
                     Accumulate512(acc, last, 0, SecretSize - StripeLen - 7);
@@ -1989,6 +2154,20 @@ namespace SuperCopyApp
 
             static void Accumulate512(ulong[] acc, byte[] input, int inputOff, int secretOff)
             {
+                // every caller but the final stripe uses an 8-byte aligned secret offset: take the
+                // secret word from the cached table there instead of re-reading four bytes at a time
+                if ((secretOff & 7) == 0)
+                {
+                    int w = secretOff >> 3;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        ulong val = Read64(input, inputOff + i * 8);
+                        ulong key = val ^ SW[w + i];
+                        acc[i ^ 1] += val;
+                        acc[i] += (ulong)(uint)key * (ulong)(uint)(key >> 32);
+                    }
+                    return;
+                }
                 for (int i = 0; i < 8; i++)
                 {
                     ulong val = Read64(input, inputOff + i * 8);
@@ -2051,11 +2230,13 @@ namespace SuperCopyApp
             }
             static ulong Read64(byte[] b, int i)
             {
+                if (LE) return BitConverter.ToUInt64(b, i);
                 return (ulong)b[i] | ((ulong)b[i + 1] << 8) | ((ulong)b[i + 2] << 16) | ((ulong)b[i + 3] << 24) |
                        ((ulong)b[i + 4] << 32) | ((ulong)b[i + 5] << 40) | ((ulong)b[i + 6] << 48) | ((ulong)b[i + 7] << 56);
             }
             static uint Read32(byte[] b, int i)
             {
+                if (LE) return BitConverter.ToUInt32(b, i);
                 return (uint)b[i] | ((uint)b[i + 1] << 8) | ((uint)b[i + 2] << 16) | ((uint)b[i + 3] << 24);
             }
             static void ReadFull(Stream s, byte[] b, int off, int n)
@@ -2065,6 +2246,71 @@ namespace SuperCopyApp
                     int r = s.Read(b, off, n);
                     if (r <= 0) throw new EndOfStreamException();
                     off += r; n -= r;
+                }
+            }
+
+            // streaming variant of HashFile for the verify pass: the source is hashed in the
+            // same pass that copies it, so verify only re-reads the destination - one pass
+            // instead of two. It hashes the same bytes as HashFile would (checked by /selftest
+            // at every block/stripe boundary). The last complete block is always kept, so the
+            // final-stripe math never has to go back to the file.
+            public sealed class StreamHasher
+            {
+                readonly ulong[] acc = new ulong[8];
+                readonly byte[] hold = new byte[BlockLen * 2];   // unprocessed data is appended here
+                int held;
+                long blocksDone;
+                long total;
+
+                public StreamHasher()
+                {
+                    for (int i = 0; i < 8; i++) acc[i] = InitAcc[i];
+                }
+
+                public void Update(byte[] b, int off, int n)
+                {
+                    if (n <= 0) return;
+                    total += n;
+                    if (total <= 240) { Buffer.BlockCopy(b, off, hold, held, n); held += n; return; }
+                    while (n > 0)
+                    {
+                        if (held >= BlockLen * 2)
+                        {
+                            Accumulate(acc, hold, 0, BlockLen / StripeLen);
+                            Scramble(acc, SecretSize - StripeLen);
+                            blocksDone++;
+                            if (held > BlockLen) Buffer.BlockCopy(hold, BlockLen, hold, 0, held - BlockLen);
+                            held -= BlockLen;
+                            continue;
+                        }
+                        int room = BlockLen * 2 - held;
+                        int c = n < room ? n : room;
+                        Buffer.BlockCopy(b, off, hold, held, c);
+                        held += c; off += c; n -= c;
+                    }
+                }
+
+                public ulong Finish()
+                {
+                    if (total <= 240) return HashShort(hold, (int)total);
+                    // the file's last 64 bytes are always inside the buffered tail; save them
+                    // before the block loop consumes them - they are the final stripe
+                    byte[] last = TailBuffer();
+                    Buffer.BlockCopy(hold, held - StripeLen, last, 0, StripeLen);
+                    long blocks = (total - 1) / BlockLen;
+                    while (blocksDone < blocks)
+                    {
+                        Accumulate(acc, hold, 0, BlockLen / StripeLen);
+                        Scramble(acc, SecretSize - StripeLen);
+                        blocksDone++;
+                        if (held > BlockLen) Buffer.BlockCopy(hold, BlockLen, hold, 0, held - BlockLen);
+                        held -= BlockLen;
+                    }
+                    int rema = (int)(total - blocksDone * BlockLen);
+                    int stripes = (rema - 1) / StripeLen;
+                    if (stripes > 0) Accumulate(acc, hold, 0, stripes);
+                    Accumulate512(acc, last, 0, SecretSize - StripeLen - 7);
+                    return Merge(acc, 11, (ulong)total * P64_1);
                 }
             }
         }
@@ -2083,6 +2329,7 @@ namespace SuperCopyApp
             try { size = new FileInfo(src).Length; } catch { }
             CopyItem it = new CopyItem();
             it.Src = src; it.Dst = dst; it.Name = name; it.Size = size;
+            it.SizeText = Fmt.Size(size);
             lock (sync) { it.Index = items.Count; items.Add(it); }
             Interlocked.Add(ref TotalBytes, size);
 
@@ -2207,6 +2454,34 @@ namespace SuperCopyApp
             }
             finally { try { File.Delete(hf); } catch { } }
 
+            // streamed hashing (the verify pass) must agree with one-shot HashFile at
+            // every block and stripe boundary, fed in awkward chunk sizes
+            string hs = Path.Combine(Path.GetTempPath(), "sc_selftest_xxh3_stream.bin");
+            try
+            {
+                int[] slens = new int[] { 241, 242, 300, 500, 1023, 1024, 1025, 1088, 1089,
+                                          2047, 2048, 2049, 2149, 3000, 4096, 4608, 5000, 5001, 6000 };
+                byte[] big = new byte[6000];
+                for (int i = 0; i < big.Length; i++) big[i] = (byte)(i * 7 + 3);
+                for (int i = 0; i < slens.Length; i++)
+                {
+                    int len = slens[i];
+                    using (FileStream wf = new FileStream(hs, FileMode.Create))
+                        wf.Write(big, 0, len);
+                    XXH3.StreamHasher h = new XXH3.StreamHasher();
+                    int off = 0;
+                    while (off < len)
+                    {
+                        int c = len - off;
+                        if (c > 257) c = 257;              // not a multiple of 64 or 1024
+                        h.Update(big, off, c);
+                        off += c;
+                    }
+                    if (h.Finish() != XXH3.HashFile(hs)) return 32;
+                }
+            }
+            finally { try { File.Delete(hs); } catch { } }
+
             // big-first ordering: scan must leave items sorted by Size descending
             string sd = Path.Combine(Path.GetTempPath(), "sc_selftest_sort");
             try
@@ -2232,6 +2507,17 @@ namespace SuperCopyApp
             // access denied detection (drives the "retry as administrator?" prompt)
             if (!IsAccessDenied(new UnauthorizedAccessException("denied"))) return 18;
             if (IsAccessDenied(new IOException("other"))) return 18;
+
+            // custom scrollbar: the thumb stays inside the track at both ends
+            int sy, sh;
+            ScrollThumb.ThumbOf(200, 99, 20, 0, out sy, out sh);
+            if (sy != 3 || sh <= 0 || sh > 194) return 31;
+            ScrollThumb.ThumbOf(200, 99, 20, 80, out sy, out sh);
+            if (sy + sh != 197) return 31;                 // scrolled to the end: thumb at the bottom
+            ScrollThumb.ThumbOf(200, 19, 20, 0, out sy, out sh);
+            if (sh != 0) return 31;                        // nothing to scroll: no thumb
+            ScrollThumb.ThumbOf(200, 1000, 20, 500, out sy, out sh);
+            if (sy <= 3 || sy + sh >= 197) return 31;      // halfway: inside the track
 
             // update.txt version parsing (drives the update check)
             if (Updates.ParseVersion(" 1 ") != 1) return 19;
@@ -2317,7 +2603,8 @@ namespace SuperCopyApp
             }
             finally { try { Directory.Delete(bakDir, true); } catch { } }
 
-            // local version compare (offline update check: running exe vs Program Files copy)            if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
+            // local version compare (offline update check: running exe vs installed copy)
+            if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
             if (Updates.FileVer(Path.Combine(Path.GetTempPath(), "sc_no_such_file.exe")) != 0) return 21;
 
             // flat verb layout (skipped until installed): SuperCopy/SuperCut/SuperToDevice
@@ -2464,6 +2751,7 @@ namespace SuperCopyApp
                     {
                         items.Sort(delegate(CopyItem a, CopyItem b) { return b.Size.CompareTo(a.Size); });
                         for (int i = 0; i < items.Count; i++) items[i].Index = i;
+                        scanOrder = items.ToArray();   // the window repaints from this, lock-free
                     }
                 }
                 catch { }
@@ -2561,7 +2849,9 @@ namespace SuperCopyApp
         void Skip(CopyItem it)
         {
             Interlocked.Add(ref DoneBytes, it.Size);
-            it.Done = it.Size;
+            // Exchange, not a plain assignment: a 32-bit write of a long can tear,
+            // and the UI reads Done while the workers run
+            Interlocked.Exchange(ref it.Done, it.Size);
             it.State = 4;
         }
 
@@ -2671,7 +2961,7 @@ namespace SuperCopyApp
                 }
                 else File.Move(src, dst);
                 Interlocked.Add(ref DoneBytes, it.Size);
-                it.Done = it.Size;
+                Interlocked.Exchange(ref it.Done, it.Size);   // atomic on 32-bit too
                 it.State = 2;
                 return;
             }
@@ -2718,18 +3008,35 @@ namespace SuperCopyApp
                 return;
             }
             // hash both files before deleting the backup or the source: a bad transfer can
-            // never destroy the only good copy, and copies are verified too, not just moves
-            if (Settings.Verify && !SameHash(dst, src))
+            // never destroy the only good copy, and copies are verified too, not just moves.
+            // The source was hashed during the copy pass itself, so this only re-reads the
+            // destination; robocopy copies have no streamed hash and read both files.
+            if (Settings.Verify)
             {
-                RemovePartial(dst);
-                if (bak != null) { try { File.Move(bak, dst); } catch { } }
-                Fail(it, "XXH3 checksum mismatch - source kept");
-                return;
+                bool same;
+                if (it.HasSrcHash)
+                {
+                    try { same = XXH3.HashFile(dst) == it.SrcHash; }
+                    catch { same = false; }
+                }
+                else same = SameHash(dst, src);
+                if (!same)
+                {
+                    RemovePartial(dst);
+                    if (bak != null) { try { File.Move(bak, dst); } catch { } }
+                    Fail(it, "XXH3 checksum mismatch - source kept");
+                    return;
+                }
             }
             if (bak != null) { try { File.Delete(bak); } catch { } }
 
             long d = Interlocked.Read(ref it.Done);
-            if (d != it.Size) { Interlocked.Add(ref TotalBytes, d - it.Size); it.Size = d; }
+            if (d != it.Size)
+            {
+                Interlocked.Add(ref TotalBytes, d - it.Size);
+                it.Size = d;
+                it.SizeText = Fmt.Size(d);
+            }
 
             try
             {
@@ -2752,10 +3059,13 @@ namespace SuperCopyApp
             it.State = 2;
         }
 
-        // returns false when cancelled
+        // returns false when cancelled. When verify is on, the source is hashed in this
+        // very pass (StreamHasher eats the same bytes that are written), so the verify
+        // step later only re-reads the destination.
         bool CopyData(string src, string dst, CopyItem it, byte[] buf)
         {
             FileStream fi = null, fo = null;
+            XXH3.StreamHasher h = Settings.Verify ? new XXH3.StreamHasher() : null;
             bool ok = false;
             try
             {
@@ -2767,10 +3077,16 @@ namespace SuperCopyApp
                     while (Paused && !Cancelled) Thread.Sleep(100);
                     if (Cancelled) break;
                     fo.Write(buf, 0, n);
+                    if (h != null) h.Update(buf, 0, n);
                     Interlocked.Add(ref it.Done, n);
                     Interlocked.Add(ref DoneBytes, n);
                 }
                 ok = !Cancelled;
+                if (ok && h != null)
+                {
+                    it.SrcHash = h.Finish();
+                    it.HasSrcHash = true;
+                }
             }
             catch
             {
@@ -2787,11 +3103,17 @@ namespace SuperCopyApp
             return ok;
         }
 
+        // starting robocopy.exe costs more than a small copy is worth: files under 1 MB
+        // go through the built-in copier regardless of the engine setting
+        const int RoboMinBytes = 1048576;
+
         // copies one file with robocopy.exe. Keeps all scanning, conflict and move logic; only the
-        // byte transfer changes. Falls back to the built-in copier if robocopy is missing, or when a
-        // rename is needed (robocopy cannot rename a single file), so no copy ever fails because of it.
+        // byte transfer changes. Falls back to the built-in copier if robocopy is missing, when a
+        // rename is needed (robocopy cannot rename a single file), or for small files, so no copy
+        // ever fails because of it.
         bool RoboCopy(string src, string dst, CopyItem it, byte[] buf)
         {
+            if (it.Size < RoboMinBytes) return CopyData(src, dst, it, buf);
             string exe = Path.Combine(Environment.SystemDirectory, "robocopy.exe");
             string dir = Path.GetDirectoryName(dst), name = Path.GetFileName(dst);
             if (!File.Exists(exe) || Path.GetFileName(src) != name) return CopyData(src, dst, it, buf);
@@ -2854,6 +3176,8 @@ namespace SuperCopyApp
         [DllImport("user32.dll")]
         static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+        public event EventHandler Scrolled;    // the list moved: the custom scrollbar follows it
+
         public BufferedListView()
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
@@ -2863,6 +3187,259 @@ namespace SuperCopyApp
         {
             base.OnHandleCreated(e);
             try { SendMessage(Handle, 0x1036, (IntPtr)0x10000, (IntPtr)0x10000); } catch { }  // LVS_EX_DOUBLEBUFFER
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            // WM_VSCROLL / WM_HSCROLL / WM_MOUSEWHEEL / WM_KEYDOWN / LVM_SCROLL (our own
+            // scrollbar drags send LVM_SCROLL straight in): repaint the thumb right away
+            if (m.Msg == 0x115 || m.Msg == 0x114 || m.Msg == 0x20A || m.Msg == 0x100 || m.Msg == 0x1014)
+            {
+                EventHandler h = Scrolled;
+                if (h != null) { try { h(this, EventArgs.Empty); } catch { } }
+            }
+        }
+    }
+
+    // ================================================================
+    //  Custom scrollbars (vertical and horizontal)
+    //
+    //  Each one is a control of its own that covers the list's native
+    //  bar. The list keeps doing the scrolling (wheel, keys, its own
+    //  EnsureVisible); these only paint the window's design and turn
+    //  mouse input into LVM_SCROLL messages.
+    // ================================================================
+    class ScrollThumb : Control
+    {
+        const int SB_HORZ = 0, SB_VERT = 1;
+        const int SIF_RANGE = 1, SIF_PAGE = 2, SIF_POS = 4;
+        const int WM_MOUSEWHEEL = 0x20A, LVM_SCROLL = 0x1014;
+        const int Pad = 3;
+        static readonly int MinThumb = Theme.ScalePx(26);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct ScrollInfo
+        {
+            public int cbSize, fMask, nMin, nMax, nPage, nPos, nTrackPos;
+        }
+
+        [DllImport("user32.dll")] static extern bool GetScrollInfo(IntPtr hWnd, int bar, ref ScrollInfo si);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        readonly ListView target;
+        readonly bool horizontal;
+        bool dragging, hot;
+        int grab, rowH;
+        int lastPos = -1, lastMax = -1, lastPage = -1;
+
+        public ScrollThumb(ListView lv, bool horizontal)
+        {
+            target = lv;
+            this.horizontal = horizontal;
+            TabStop = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.Selectable, false);
+            AllowDrop = true;      // dropping files on the bar must work like dropping on the list
+        }
+
+        // length of the bar along its axis
+        int TrackLen { get { return horizontal ? Width : Height; } }
+        // RTL mirrors the horizontal bar: mouse and thumb share one axis
+        int Axis(int v) { return (horizontal && L.Rtl) ? Width - v : v; }
+        int LenOf(Rectangle t) { return horizontal ? t.Width : t.Height; }
+        int StartOf(Rectangle t) { return horizontal ? (L.Rtl ? Width - t.Right : t.Left) : t.Top; }
+
+        // scroll state of the list; false when there is nothing to scroll
+        public bool State(out int pos, out int max, out int page)
+        {
+            pos = max = page = 0;
+            if (target == null || !target.IsHandleCreated) return false;
+            try
+            {
+                ScrollInfo si = new ScrollInfo();
+                si.cbSize = Marshal.SizeOf(typeof(ScrollInfo));
+                si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+                if (!GetScrollInfo(target.Handle, horizontal ? SB_HORZ : SB_VERT, ref si)) return false;
+                pos = si.nPos; max = si.nMax; page = si.nPage;
+            }
+            catch { return false; }
+            return page > 0 && max - page + 1 > 0;
+        }
+
+        // reads the state and repaints only when it really changed (checked once per tick)
+        public bool Sync()
+        {
+            int pos, max, page;
+            bool need = State(out pos, out max, out page);
+            if (!need) { lastPos = -1; return false; }
+            if (pos != lastPos || max != lastMax || page != lastPage)
+            {
+                lastPos = pos; lastMax = max; lastPage = page;
+                Invalidate();
+            }
+            return true;
+        }
+
+        // thumb geometry inside a track of length "track": pure function, checked by /selftest
+        public static void ThumbOf(int track, int max, int page, int pos, out int off, out int len)
+        {
+            off = 0; len = 0;
+            int inner = track - 2 * Pad;
+            if (inner <= 0 || page <= 0 || max < page) return;
+            len = (int)Math.Round((double)inner * page / (max + 1));
+            if (len < MinThumb) len = MinThumb;
+            if (len > inner) len = inner;
+            int span = max - page + 1, travel = inner - len;
+            if (span <= 0 || travel <= 0) return;
+            int p = pos < 0 ? 0 : (pos > span ? span : pos);
+            off = Pad + (int)Math.Round((double)travel * p / span);
+        }
+
+        Rectangle ThumbRect()
+        {
+            int pos, max, page;
+            if (!State(out pos, out max, out page)) return Rectangle.Empty;
+            int off, len;
+            ThumbOf(TrackLen, max, page, pos, out off, out len);
+            if (len <= 0) return Rectangle.Empty;
+            if (horizontal)
+                return new Rectangle(L.Rtl ? Axis(off + len) : off, 2, len, Math.Max(1, Height - 4));
+            return new Rectangle(2, off, Math.Max(1, Width - 4), len);
+        }
+
+        // where the thumb has to start for a wanted scroll position (inverse of ThumbOf)
+        int PosOf(int thumbOff, int thumbLen, int max, int page)
+        {
+            int span = max - page + 1, travel = (TrackLen - 2 * Pad) - thumbLen;
+            if (span <= 0 || travel <= 0) return 0;
+            int p = (int)Math.Round((double)(thumbOff - Pad) * span / travel);
+            return p < 0 ? 0 : (p > span ? span : p);
+        }
+
+        // the list asks for item rectangles itself; rows are uniform, so one read is enough
+        int RowHeight()
+        {
+            if (rowH > 0) return rowH;
+            try
+            {
+                if (target.VirtualListSize > 0)
+                {
+                    Rectangle r = target.GetItemRect(0);
+                    if (r.Height > 0) rowH = r.Height;
+                }
+            }
+            catch { }
+            return rowH > 0 ? rowH : 20;
+        }
+
+        // the list scrolls in pixels: a row index becomes rows x row height
+        void ScrollTo(int pos)
+        {
+            int cur, max, page;
+            if (!State(out cur, out max, out page)) return;
+            int delta = pos - cur;
+            if (delta == 0 || target == null || !target.IsHandleCreated) return;
+            try
+            {
+                if (horizontal) SendMessage(target.Handle, LVM_SCROLL, (IntPtr)delta, IntPtr.Zero);
+                else SendMessage(target.Handle, LVM_SCROLL, IntPtr.Zero, (IntPtr)(delta * RowHeight()));
+            }
+            catch { }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(Theme.Bg);      // the native bar underneath stays covered
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle track = horizontal
+                ? new Rectangle(4, 2, Math.Max(1, Width - 8), Math.Max(1, Height - 4))
+                : new Rectangle(2, 4, Math.Max(1, Width - 4), Math.Max(1, Height - 8));
+            using (GraphicsPath tp = Gfx.Round(track, 4)) g.FillPath(Theme.BrTrack, tp);
+            Rectangle t = ThumbRect();
+            if (t.IsEmpty) return;
+            bool lit = hot || dragging;
+            using (GraphicsPath p = Gfx.Round(t, 4))
+            {
+                using (LinearGradientBrush lb = new LinearGradientBrush(t,
+                        lit ? Theme.Cyan : Theme.Panel2, lit ? Theme.Violet : Theme.Border,
+                        horizontal ? LinearGradientMode.Horizontal : LinearGradientMode.Vertical))
+                    g.FillPath(lb, p);
+                g.DrawPath(Theme.PenBorder, p);
+                if (LenOf(t) >= 34)      // grip lines, only when there is room for them
+                {
+                    using (Pen grip = new Pen(Color.FromArgb(90, 255, 255, 255)))
+                    {
+                        int cx = t.X + t.Width / 2, cy = t.Y + t.Height / 2;
+                        for (int i = -1; i <= 1; i++)
+                        {
+                            if (horizontal) g.DrawLine(grip, cx + i * 4, cy - 3, cx + i * 4, cy + 4);
+                            else g.DrawLine(grip, cx - 3, cy + i * 4, cx + 4, cy + i * 4);
+                        }
+                    }
+                }
+            }
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hot = true; Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hot = false; Invalidate(); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            int pos, max, page;
+            if (!State(out pos, out max, out page)) return;
+            Rectangle t = ThumbRect();
+            if (t.IsEmpty) return;
+            int a = Axis(horizontal ? e.X : e.Y);
+            int at = StartOf(t), len = LenOf(t);
+            if (a < at || a > at + len)
+            {
+                // click on the track: the thumb jumps under the mouse
+                ScrollTo(PosOf(a - len / 2, len, max, page));
+                t = ThumbRect();
+                if (t.IsEmpty) return;
+                at = StartOf(t); len = LenOf(t);
+            }
+            dragging = true;
+            grab = a - at;      // where the thumb was grabbed
+            try { Capture = true; } catch { }
+            Invalidate();
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!dragging) return;
+            int pos, max, page;
+            if (!State(out pos, out max, out page)) return;
+            Rectangle t = ThumbRect();
+            if (t.IsEmpty) return;
+            ScrollTo(PosOf(Axis(horizontal ? e.X : e.Y) - grab, LenOf(t), max, page));
+            Invalidate();
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (!dragging) return;
+            dragging = false;
+            try { Capture = false; } catch { }
+            Invalidate();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            // the wheel over the bar scrolls the list, like everywhere else in the window
+            if (target != null && target.IsHandleCreated)
+            {
+                try { SendMessage(target.Handle, WM_MOUSEWHEEL, (IntPtr)(e.Delta << 16), IntPtr.Zero); } catch { }
+            }
+            Invalidate();
         }
     }
 
@@ -2979,17 +3556,48 @@ namespace SuperCopyApp
 
     static class UI
     {
+        // one paint for hover/press/disabled: the stock flat renderer embosses disabled text
+        // with system control colours, which never matched the white text of active buttons
+        class FlatButton : Button
+        {
+            bool hot, down;
+
+            public FlatButton()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                         ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+                MouseEnter += new EventHandler(delegate { hot = true; Invalidate(); });
+                MouseLeave += new EventHandler(delegate { hot = false; down = false; Invalidate(); });
+                MouseDown += new MouseEventHandler(delegate { down = true; Invalidate(); });
+                MouseUp += new MouseEventHandler(delegate { down = false; Invalidate(); });
+                MouseCaptureChanged += new EventHandler(delegate { down = false; Invalidate(); });
+                EnabledChanged += new EventHandler(delegate { Invalidate(); });
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Rectangle r = e.ClipRectangle;
+                Color back = BackColor;
+                if (Enabled && down)
+                    back = Color.FromArgb(Math.Max(0, back.R - 35), Math.Max(0, back.G - 35), Math.Max(0, back.B - 35));
+                else if (Enabled && hot)
+                    back = Color.FromArgb(Math.Min(255, back.R + 35), Math.Min(255, back.G + 35), Math.Min(255, back.B + 35));
+                using (SolidBrush b = new SolidBrush(back)) e.Graphics.FillRectangle(b, r);
+                // same white as active buttons, half strength when disabled; the '&' of the
+                // keyboard mnemonic stays in Text for keyboard use but is not painted as such
+                Color fore = Enabled ? ForeColor : Color.FromArgb(130, ForeColor);
+                string t = Text.Replace("&", "");
+                TextRenderer.DrawText(e.Graphics, t, Font, r, fore,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            }
+        }
+
         public static Button MakeButton(string text, int w, Color back)
         {
-            Button b = new Button();
+            Button b = new FlatButton();
             b.Text = text;
             b.Size = new Size(w, 28);
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
-            b.UseVisualStyleBackColor = false;
             b.BackColor = back;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(
-                Math.Min(255, back.R + 35), Math.Min(255, back.G + 35), Math.Min(255, back.B + 35));
             b.ForeColor = Color.White;
             b.Font = Theme.Bold;
             b.Cursor = Cursors.Hand;
@@ -3015,6 +3623,7 @@ namespace SuperCopyApp
         string lastDest;   // most recent job's folder: drop menu offers it as "same destination"
         HeaderPanel header;
         BufferedListView lv;
+        ScrollThumb scrlV, scrlH;         // custom scrollbars drawn over the list's native bars
         ColumnHeader colFile;
         ListBox jobBox;
         Panel bottom;
@@ -3025,16 +3634,24 @@ namespace SuperCopyApp
         System.Windows.Forms.Timer timer;
         NotifyIcon tray;
         ContextMenu trayMenu;
+        ToolTip tip;
         bool exiting, doneHandled, settingSel, compact;
         bool adminPrompted, retryEscalated;   // access-denied -> "retry as admin?" asked / elevating
         int lastTick, tickN, closeAt = -1;
         int paintedCount = -1;                // list state at the last repaint (repaint only on change)
         bool paintedBusy, headerDirty = true;
+        int lastFullPaint;                    // last time the whole list was repainted (safety net)
+        int rowCacheIndex = -1;               // row -> item lookup reused by the five other cells
+        CopyItem rowCacheItem;
+        CopyJob rowCacheJob;
+        int hotRow = -1;                      // row under the mouse (our own hover highlight)
         int paintedJobs = -1;                 // job count at the last job-box repaint
         int paintedErrs = -1;                 // error count at the last list repaint
         int lastActiveRow = -1;               // row of the active file (scroll only when it moves)
+        int userScrollAt;                     // when the user last scrolled the list by hand
         bool closingAfter;                    // the window closes itself when the workers are done
         int closingAt;
+        int lastPoll;                         // last queue poll (Environment.TickCount)
         volatile string promptError;          // set when the conflict prompt could not be shown
         Size savedSize;
 
@@ -3053,6 +3670,8 @@ namespace SuperCopyApp
             Font = Theme.Cell;
             BackColor = Theme.Bg;
             StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
+            AutoScaleDimensions = new SizeF(96F, 96F);
             ClientSize = new Size(800, 520);
             MinimumSize = new Size(660, 380);
             Icon = IconMaker.MakeIcon();
@@ -3072,27 +3691,33 @@ namespace SuperCopyApp
             lv.ForeColor = Theme.Text;
             BuildColumns();
             ImageList rowH = new ImageList();      // trick: taller rows for the progress bars
-            rowH.ImageSize = new Size(1, 24);
+            rowH.ImageSize = new Size(1, Theme.ScalePx(24));
             lv.SmallImageList = rowH;
             lv.RetrieveVirtualItem += new RetrieveVirtualItemEventHandler(lv_Retrieve);
             lv.DrawColumnHeader += new DrawListViewColumnHeaderEventHandler(lv_DrawHeader);
             lv.DrawItem += new DrawListViewItemEventHandler(lv_DrawItem);
             lv.DrawSubItem += new DrawListViewSubItemEventHandler(lv_DrawSub);
             lv.Resize += new EventHandler(lv_Resize);
+            lv.Scrolled += new EventHandler(lv_Scrolled);
+            lv.ContextMenu = new ContextMenu();
+            lv.ContextMenu.Popup += new EventHandler(ListMenu_Popup);
+            lv.DoubleClick += new EventHandler(OpenSelectedDest);
+            lv.MouseMove += new MouseEventHandler(lv_MouseMove);
+            lv.MouseLeave += new EventHandler(lv_MouseLeave);
 
             // ----- bottom bar -----
             bottom = new Panel();
             bottom.Dock = DockStyle.Bottom;
             bottom.Height = 46;
             bottom.BackColor = Theme.Panel;
-            btnPause = UI.MakeButton(L.T("Pause", "إيقاف", "Pause"), 78, Color.FromArgb(214, 140, 30));
-            btnCancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 78, Color.FromArgb(200, 55, 75));
-            btnSettings = UI.MakeButton(L.T("Settings", "الإعدادات", "Paramètres"), 84, Color.FromArgb(70, 90, 170));
+            btnPause = UI.MakeButton(L.T("&Pause", "إيقاف (&P)", "&Pause"), 78, Color.FromArgb(214, 140, 30));
+            btnCancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 78, Color.FromArgb(200, 55, 75));
+            btnSettings = UI.MakeButton(L.T("&Settings", "الإعدادات (&S)", "Param&ètres"), 84, Color.FromArgb(70, 90, 170));
             btnPause.Location = new Point(12, 9);
             btnCancel.Location = new Point(98, 9);
             btnSettings.Location = new Point(184, 9);
             chkClose = new CheckBox();
-            chkClose.Text = L.T("Close when finished", "إغلاق عند الانتهاء", "Fermer à la fin");
+            chkClose.Text = L.T("Close when &finished", "إغلاق عند الانتهاء (&F)", "&Fermer à la fin");
             chkClose.AutoSize = true;
             chkClose.ForeColor = Theme.Text;
             chkClose.BackColor = Theme.Panel;
@@ -3106,7 +3731,7 @@ namespace SuperCopyApp
             lblErr.BackColor = Theme.Panel;
             lblErr.TextAlign = ContentAlignment.MiddleRight;
             lblErr.SetBounds(440, 14, 300, 18);
-            btnErrReport = UI.MakeButton(L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs"), 132, Color.FromArgb(200, 55, 75));
+            btnErrReport = UI.MakeButton(L.T("&Error report", "تقرير الأخطاء (&E)", "&Rapport d'erreurs"), 132, Color.FromArgb(200, 55, 75));
             btnErrReport.Visible = false;
             bottom.Controls.Add(btnPause);
             bottom.Controls.Add(btnCancel);
@@ -3124,25 +3749,26 @@ namespace SuperCopyApp
             jobBox = new ListBox();
             jobBox.Dock = DockStyle.Top;
             jobBox.DrawMode = DrawMode.OwnerDrawFixed;
-            jobBox.ItemHeight = 26;
+            jobBox.ItemHeight = Theme.ScalePx(26);
             jobBox.IntegralHeight = false;
             jobBox.BorderStyle = BorderStyle.None;
             jobBox.BackColor = Theme.Panel;
             jobBox.Visible = false;
             jobBox.DrawItem += new DrawItemEventHandler(jobBox_DrawItem);
             jobBox.SelectedIndexChanged += new EventHandler(jobBox_Changed);
+            jobBox.DoubleClick += new EventHandler(jobBox_OpenDest);
 
             // ----- header -----
             header = new HeaderPanel();
         header.Dock = DockStyle.Top;
         header.Height = 104;
-            btnHide = UI.MakeButton(L.T("Hide", "إخفاء", "Masquer"), 70, Color.FromArgb(70, 90, 170));
+            btnHide = UI.MakeButton(L.T("&Hide", "إخفاء (&H)", "&Masquer"), 70, Color.FromArgb(70, 90, 170));
             btnHide.Height = 26;
             header.HideButton = btnHide;
             header.Controls.Add(btnHide);
             btnHide.Location = new Point(header.Width - btnHide.Width - 14, 9);
             btnHide.Click += new EventHandler(btnHide_Click);
-            btnMode = UI.MakeButton(L.T("Compact", "مضغوط", "Compact"), 78, Color.FromArgb(60, 120, 140));
+            btnMode = UI.MakeButton(L.T("Co&mact", "مضغوط (&M)", "Co&mact"), 78, Color.FromArgb(60, 120, 140));
             btnMode.Height = 26;
             header.ModeButton = btnMode;
             header.Controls.Add(btnMode);
@@ -3154,11 +3780,21 @@ namespace SuperCopyApp
             Controls.Add(jobBox);
             Controls.Add(header);
 
+            // ----- custom scrollbars (sit on top of the list's native bars) -----
+            scrlV = new ScrollThumb(lv, false);
+            scrlH = new ScrollThumb(lv, true);
+            scrlV.Visible = false;
+            scrlH.Visible = false;
+            Controls.Add(scrlV);
+            Controls.Add(scrlH);
+            scrlV.BringToFront();
+            scrlH.BringToFront();
+
             // ----- drag & drop (works while a copy is running) -----
             AllowDrop = true;
             DragEnter += new DragEventHandler(OnDragEnter);
             DragDrop += new DragEventHandler(OnDragDrop);
-            Control[] dropTargets = new Control[] { lv, header, bottom, jobBox };
+            Control[] dropTargets = new Control[] { lv, header, bottom, jobBox, scrlV, scrlH };
             for (int i = 0; i < dropTargets.Length; i++)
             {
                 dropTargets[i].AllowDrop = true;
@@ -3172,11 +3808,12 @@ namespace SuperCopyApp
             tray.Text = "Super Copy";
             tray.Visible = false;
             tray.DoubleClick += new EventHandler(tray_Show);
+            tray.BalloonTipClicked += new EventHandler(tray_Show);
             trayMenu = new ContextMenu();
-            trayMenu.MenuItems.Add(L.T("Show window", "إظهار النافذة", "Afficher la fenêtre"), new EventHandler(tray_Show));
-            trayMenu.MenuItems.Add(L.T("Pause / Resume", "إيقاف / متابعة", "Pause / Reprendre"), new EventHandler(btnPause_Click));
+            trayMenu.MenuItems.Add(L.T("&Show window", "إظهار النافذة (&S)", "&Afficher la fenêtre"), new EventHandler(tray_Show));
+            trayMenu.MenuItems.Add(L.T("&Pause / Resume", "إيقاف / متابعة (&P)", "&Pause / Reprendre"), new EventHandler(btnPause_Click));
             trayMenu.MenuItems.Add("-");
-            trayMenu.MenuItems.Add(L.T("Cancel all and exit", "إلغاء الكل والخروج", "Tout annuler et quitter"), new EventHandler(tray_Exit));
+            trayMenu.MenuItems.Add(L.T("&Cancel all and exit", "إلغاء الكل والخروج (&C)", "&Tout annuler et quitter"), new EventHandler(tray_Exit));
             tray.ContextMenu = trayMenu;
 
             if (first != null) AddJob(first);   // null: /queue mode, jobs arrive via PollQueue
@@ -3186,6 +3823,7 @@ namespace SuperCopyApp
             timer.Tick += new EventHandler(OnTick);
             lastTick = Environment.TickCount;
             timer.Start();
+            tip = new ToolTip();
 
             lv_Resize(null, null);
             bottom_Resize(null, null);
@@ -3197,16 +3835,16 @@ namespace SuperCopyApp
         public void ApplyLanguage()
         {
             L.ApplyRtl(this, false);
-            btnCancel.Text = L.T("Cancel", "إلغاء", "Annuler");
-            btnSettings.Text = L.T("Settings", "الإعدادات", "Paramètres");
-            btnHide.Text = L.T("Hide", "إخفاء", "Masquer");
-            btnErrReport.Text = L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs");
-            chkClose.Text = L.T("Close when finished", "إغلاق عند الانتهاء", "Fermer à la fin");
-            trayMenu.MenuItems[0].Text = L.T("Show window", "إظهار النافذة", "Afficher la fenêtre");
-            trayMenu.MenuItems[1].Text = L.T("Pause / Resume", "إيقاف / متابعة", "Pause / Reprendre");
-            trayMenu.MenuItems[3].Text = L.T("Cancel all and exit", "إلغاء الكل والخروج", "Tout annuler et quitter");
+            btnCancel.Text = L.T("&Cancel", "إلغاء (&C)", "&Annuler");
+            btnSettings.Text = L.T("&Settings", "الإعدادات (&S)", "Param&ètres");
+            btnHide.Text = L.T("&Hide", "إخفاء (&H)", "&Masquer");
+            btnErrReport.Text = L.T("&Error report", "تقرير الأخطاء (&E)", "&Rapport d'erreurs");
+            chkClose.Text = L.T("Close when &finished", "إغلاق عند الانتهاء (&F)", "&Fermer à la fin");
+            trayMenu.MenuItems[0].Text = L.T("&Show window", "إظهار النافذة (&S)", "&Afficher la fenêtre");
+            trayMenu.MenuItems[1].Text = L.T("&Pause / Resume", "إيقاف / متابعة (&P)", "&Pause / Reprendre");
+            trayMenu.MenuItems[3].Text = L.T("&Cancel all and exit", "إلغاء الكل والخروج (&C)", "&Tout annuler et quitter");
             BuildColumns();
-            btnMode.Text = compact ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
+            btnMode.Text = compact ? L.T("F&iles", "الملفات (&I)", "F&ichiers") : L.T("Co&mact", "مضغوط (&M)", "Co&mact");
             UpdateButtons();
             lv_Resize(null, EventArgs.Empty);
             bottom_Resize(null, EventArgs.Empty);
@@ -3283,7 +3921,7 @@ namespace SuperCopyApp
         int AskConflictNow(string src, string dst)
         {
             if (Settings.AskSession >= 0) return Settings.AskSession;   // another worker answered already
-            using (ConflictDialog d = new ConflictDialog(dst))
+            using (ConflictDialog d = new ConflictDialog(src, dst))
             {
                 d.TopMost = true;      // the prompt must not hide behind the Explorer window
                 timer.Stop();          // no repaint behind the modal prompt
@@ -3312,7 +3950,7 @@ namespace SuperCopyApp
             closeAt = -1;
             bool multi = jobs.Count >= 2;
             jobBox.Visible = multi && !compact;
-            jobBox.Height = Math.Min(jobs.Count, 4) * 26 + 2;
+            jobBox.Height = Math.Min(jobs.Count, 4) * jobBox.ItemHeight + 2;
             if (cur == null) SetCur(j);
             lv.VirtualListSize = ListCount();
             ShowOnTop();      // the user has to see the copy that just started
@@ -3410,9 +4048,12 @@ namespace SuperCopyApp
             return false;
         }
 
-        bool MouseInList()
+        // the list follows the active file again a moment after the user stopped scrolling it;
+        // being over the list with the mouse is not "the user is scrolling", it used to freeze
+        // the follow and then jump when the pointer left the list
+        bool UserScrolling()
         {
-            try { return lv.ClientRectangle.Contains(lv.PointToClient(Cursor.Position)); } catch { return false; }
+            return unchecked(Environment.TickCount - userScrollAt) < 2500;
         }
 
         // ------------------------------------------------------------
@@ -3426,7 +4067,9 @@ namespace SuperCopyApp
             lastTick = now;
             if (dt < 1) dt = 1;
 
-            if (tickN % 4 == 0) PollQueue();      // every second: hand-over jobs from other instances
+            // hand-over jobs from other instances: about once a second, whatever the timer rate
+            if (now - lastPoll >= 1000) { lastPoll = now; PollQueue(); }
+
             if (promptError != null)
             {
                 string e2 = promptError;
@@ -3440,6 +4083,12 @@ namespace SuperCopyApp
                 running.Sample(dt);
             }
             Advance();
+
+            // while no job runs there is nothing to animate: one tick per second is enough and
+            // wakes the CPU four times less often than the 250 ms of a running copy
+            bool anyRun = running != null && !running.Finished;
+            int want = anyRun ? 250 : 1000;
+            if (timer.Interval != want) timer.Interval = want;
 
             // caption / tray tooltip stay current even when hidden
             string cap = "Super Copy";
@@ -3458,7 +4107,7 @@ namespace SuperCopyApp
                     {
                         int row = ListRowOf(cur);
                         if (row >= 0) idx += row;
-                        if (idx != lastActiveRow && !MouseInList())   // scroll only when the active file changes
+                        if (idx != lastActiveRow && !UserScrolling())   // scroll only when the active file changes
                         {
                             lastActiveRow = idx;
                             try
@@ -3472,19 +4121,25 @@ namespace SuperCopyApp
                 }
                 UpdateHeader();
                 UpdateButtons();
+                UpdateScrollBar();
                 header.Tick = tickN;
                 if (headerDirty || header.Marquee) header.Invalidate();
-                // the rows only change while a job runs, when the count changes or when a job ends
+                // the rows only change while a job runs, when the count changes or when a job ends;
+                // while a job runs, only the rows that really change are repainted instead of the
+                // whole list four times a second
                 bool busy = running != null && !running.Finished && !running.Paused;
                 int errs = 0;
                 for (int i = 0; i < jobs.Count; i++) errs += jobs[i].Errors;
-                if (busy || cnt != paintedCount || busy != paintedBusy || errs != paintedErrs)
+                if (cnt != paintedCount || busy != paintedBusy || errs != paintedErrs ||
+                    (busy && tickN - lastFullPaint >= 20))
                 {
                     lv.Invalidate();
                     paintedCount = cnt;
                     paintedBusy = busy;
                     paintedErrs = errs;
+                    lastFullPaint = tickN;
                 }
+                else if (busy) RepaintChangedRows();
                 if (jobBox.Visible && (busy || jobBox.Items.Count != paintedJobs))
                 {
                     jobBox.Invalidate();
@@ -3492,7 +4147,7 @@ namespace SuperCopyApp
                 }
             }
 
-            if (closeAt >= 0 && tickN >= closeAt) { exiting = true; Close(); }
+            if (closeAt >= 0 && unchecked(Environment.TickCount - closeAt) >= 0) { exiting = true; Close(); }
             if (closingAfter && (!AnyRunning() || Environment.TickCount - closingAt > 10000))
             {
                 closingAfter = false;      // the workers are done (or too slow): close now
@@ -3580,11 +4235,19 @@ namespace SuperCopyApp
             try { TopMost = false; } catch { }      // back to the normal z-order
             if (errs > 0 || canc)
             {
-                if (!Visible) ShowFromTray();     // let the user see what happened
+                if (errs > 0 && !Visible)
+                {
+                    // the window stays in the tray: a balloon announces the failure instead of
+                    // pulling the window over whatever the user is doing
+                    try { tray.ShowBalloonTip(5000, "Super Copy",
+                        L.T("Finished with errors. Click to open the error report.", "اكتمل مع أخطاء. انقر لفتح تقرير الأخطاء.", "Terminé avec des erreurs. Cliquez pour ouvrir le rapport d'erreurs."),
+                        ToolTipIcon.Warning); } catch { }
+                }
+                else if (!Visible) ShowFromTray();     // cancelled: let the user see what happened
             }
             else if (Settings.AutoClose)
             {
-                closeAt = tickN + 6;
+                closeAt = Environment.TickCount + 1500;   // time, not ticks: the timer slows down while idle
             }
             else if (!Visible)
             {
@@ -3687,11 +4350,80 @@ namespace SuperCopyApp
             }
             string lastErr = null;
             for (int i = 0; i < jobs.Count; i++) if (jobs[i].LastError != null) lastErr = jobs[i].LastError;
-            lblErr.Text = lastErr == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + lastErr;
+            // the label clips long messages; the tooltip always holds the full text
+            string full = lastErr == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + lastErr;
+            if (lblErr.Text != full) lblErr.Text = full;
+            if (tip != null) { try { tip.SetToolTip(lblErr, full); } catch { } }
 
             headerDirty = oTitle != h.Title || oElapsed != h.Elapsed || oBar != h.BarText ||
                           oL != h.TxtL || oM != h.TxtM || oR != h.TxtR ||
                           oFrac != h.Frac || oA != h.ColA || oB != h.ColB || oMar != h.Marquee;
+        }
+
+        // a custom bar is shown only while the list really scrolls along that axis
+        void UpdateScrollBar()
+        {
+            if (scrlV == null) return;
+            bool v = lv.Visible && scrlV.Sync();
+            bool h = lv.Visible && scrlH.Sync();
+            if (scrlV.Visible != v || scrlH.Visible != h)
+            {
+                scrlV.Visible = v;
+                scrlH.Visible = h;
+                LayoutScrollBars();
+            }
+        }
+
+        void lv_Scrolled(object s, EventArgs e)
+        {
+            userScrollAt = Environment.TickCount;   // the list follows the active file again later
+            UpdateScrollBar();
+            RefreshHover();                         // the rows moved under a still cursor: the hover follows
+        }
+
+        // ---- our own hover highlight (the native one is suppressed in the paint handlers) ----
+        void lv_MouseMove(object s, MouseEventArgs e)
+        {
+            int idx = -1;
+            try { ListViewItem it = lv.GetItemAt(e.X, e.Y); if (it != null) idx = it.Index; } catch { }
+            if (idx == hotRow) return;
+            int old = hotRow;
+            hotRow = idx;
+            RepaintRow(old);
+            if (hotRow >= 0) RepaintRow(hotRow);
+        }
+
+        void lv_MouseLeave(object s, EventArgs e) { RefreshHover(); }
+
+        // re-reads the row under the cursor and repaints the two affected rows on change
+        void RefreshHover()
+        {
+            int idx = -1;
+            try { Point p = lv.PointToClient(Cursor.Position); ListViewItem it = lv.GetItemAt(p.X, p.Y); if (it != null) idx = it.Index; } catch { }
+            if (idx == hotRow) return;
+            int old = hotRow;
+            hotRow = idx;
+            RepaintRow(old);
+            if (hotRow >= 0) RepaintRow(hotRow);
+        }
+
+        void RepaintRow(int idx)
+        {
+            if (idx < 0 || idx >= lv.VirtualListSize) return;
+            try { lv.RedrawItems(idx, idx, false); } catch { }
+        }
+
+        // the bars hug the list's right and bottom edges (left in RTL) and share the corner
+        void LayoutScrollBars()
+        {
+            if (scrlV == null || scrlH == null) return;
+            int vw = SystemInformation.VerticalScrollBarWidth;
+            int hh = SystemInformation.HorizontalScrollBarHeight;
+            int vh = Math.Max(1, lv.Height - (scrlH.Visible ? hh : 0));
+            scrlV.SetBounds(L.Rtl ? lv.Left : lv.Right - vw, lv.Top, vw, vh);
+            scrlH.SetBounds(lv.Left, lv.Bottom - hh, Math.Max(1, lv.Width), hh);
+            scrlV.BringToFront();
+            scrlH.BringToFront();
         }
 
         void UpdateButtons()
@@ -3700,7 +4432,7 @@ namespace SuperCopyApp
             bool active = act != null && !act.Finished;
             btnPause.Enabled = active;
             btnCancel.Enabled = active;
-            string t = (act != null && act.Paused) ? L.T("Resume", "متابعة", "Reprendre") : L.T("Pause", "إيقاف", "Pause");
+            string t = (act != null && act.Paused) ? L.T("&Resume", "متابعة (&R)", "&Reprendre") : L.T("&Pause", "إيقاف (&P)", "&Pause");
             if (btnPause.Text != t) btnPause.Text = t;
             bool showErr = false;
             for (int i = 0; i < jobs.Count; i++) if (jobs[i].Errors > 0) { showErr = true; break; }
@@ -3709,6 +4441,46 @@ namespace SuperCopyApp
                 btnErrReport.Visible = showErr;
                 bottom_Resize(null, EventArgs.Empty);
             }
+        }
+
+        // ------------------------------------------------------------
+        //  repaint only what changed
+        // ------------------------------------------------------------
+        // The rows that really change: the files being copied right now (progress, speed and time
+        // move on every tick) and rows whose state changed. Everything else keeps its pixels, so a
+        // queue with thousands of files no longer redraws the whole list four times a second.
+        void RepaintChangedRows()
+        {
+            if (!lv.IsHandleCreated) return;
+            int row = 0;
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                CopyJob j = jobs[i];
+                CopyItem[] its = j.Snapshot();
+                if (its.Length != j.ItemCount) { lv.Invalidate(); return; }   // the scan still adds rows
+                for (int k = 0; k < its.Length; k++)
+                {
+                    CopyItem it = its[k];
+                    if (it == null) continue;
+                    if (it.State == 1 || it.State != it.PaintedState)
+                    {
+                        it.PaintedState = it.State;
+                        InvalidateRow(row + k);
+                    }
+                }
+                row += its.Length;
+            }
+        }
+
+        void InvalidateRow(int row)
+        {
+            try
+            {
+                if (row < 0 || row >= lv.VirtualListSize) return;
+                Rectangle r = lv.GetItemRect(row, ItemBoundsPortion.Entire);
+                if (r.Height > 0) lv.Invalidate(r);
+            }
+            catch { }
         }
 
         // ------------------------------------------------------------
@@ -3725,6 +4497,106 @@ namespace SuperCopyApp
         {
             CopyJob j = (running != null && !running.Finished) ? running : cur;
             if (j != null && !j.Finished) j.Cancel();
+        }
+
+        // ------------------------------------------------------------
+        //  file list context menu: navigate, take the paths, retry failures
+        // ------------------------------------------------------------
+        void ListMenu_Popup(object s, EventArgs e)
+        {
+            ContextMenu m = lv.ContextMenu;
+            m.MenuItems.Clear();
+            int sel = lv.SelectedIndices.Count > 0 ? lv.SelectedIndices[0] : -1;
+            CopyJob oj = null;
+            CopyItem it = null;
+            if (sel >= 0) it = ListItem(sel, out oj);
+            bool hasFile = it != null;
+
+            MenuItem open = new MenuItem(L.T("Open destination", "افتح الوجهة", "Ouvrir la destination"));
+            open.Enabled = hasFile;
+            open.Click += new EventHandler(OpenSelectedDest);
+            m.MenuItems.Add(open);
+
+            MenuItem cpSrc = new MenuItem(L.T("Copy source path", "انسخ مسار المصدر", "Copier le chemin source"));
+            cpSrc.Enabled = hasFile && it.Src != null;
+            cpSrc.Click += new EventHandler(CopySrcPath_Click);
+            m.MenuItems.Add(cpSrc);
+
+            MenuItem cpDst = new MenuItem(L.T("Copy destination path", "انسخ مسار الوجهة", "Copier le chemin de destination"));
+            cpDst.Enabled = hasFile;
+            cpDst.Click += new EventHandler(CopyDstPath_Click);
+            m.MenuItems.Add(cpDst);
+
+            m.MenuItems.Add("-");
+
+            MenuItem retry = new MenuItem(L.T("Retry failed items", "أعد المحاولة للعناصر الفاشلة", "Réessayer les éléments échoués"));
+            bool any = false;
+            for (int i = 0; i < jobs.Count; i++) if (jobs[i].Errors > 0) { any = true; break; }
+            retry.Enabled = any;
+            retry.Click += new EventHandler(RetryFailed_Click);
+            m.MenuItems.Add(retry);
+        }
+
+        // selects the finished copy in Explorer when it is there, otherwise opens its folder
+        void OpenSelectedDest(object s, EventArgs e)
+        {
+            if (lv.SelectedIndices.Count == 0) return;
+            CopyJob oj;
+            CopyItem it = ListItem(lv.SelectedIndices[0], out oj);
+            if (it == null || it.Dst == null || it.Dst.Length == 0) return;
+            if (File.Exists(it.Dst))
+            {
+                try { Process.Start("explorer.exe", "/select,\"" + it.Dst + "\""); }   // no space after the comma
+                catch { }
+            }
+            else
+            {
+                string dir = Path.GetDirectoryName(it.Dst);
+                if (dir != null) OpenFolder(dir);
+            }
+        }
+
+        static void OpenFolder(string path)
+        {
+            if (path == null || path.Length == 0) return;
+            try { Process.Start("explorer.exe", "\"" + path + "\""); } catch { }
+        }
+
+        void CopySrcPath_Click(object s, EventArgs e) { CopyPathOf(true); }
+        void CopyDstPath_Click(object s, EventArgs e) { CopyPathOf(false); }
+
+        void CopyPathOf(bool src)
+        {
+            if (lv.SelectedIndices.Count == 0) return;
+            CopyJob oj;
+            CopyItem it = ListItem(lv.SelectedIndices[0], out oj);
+            if (it == null) return;
+            string p = src ? it.Src : it.Dst;
+            if (p == null || p.Length == 0) return;
+            try { Clipboard.SetText(p); } catch { }
+        }
+
+        // queues the failed items of every job as a new job (same destination, same move flag)
+        void RetryFailed_Click(object s, EventArgs e)
+        {
+            List<string> src = new List<string>();
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                CopyJob j = jobs[i];
+                for (int k = 0; k < j.ItemCount; k++)
+                {
+                    CopyItem it = j.GetItem(k);
+                    if (it.State == 3 && it.Src != null && it.Src.Length > 0 && File.Exists(it.Src)) src.Add(it.Src);
+                }
+            }
+            if (src.Count == 0)
+            {
+                Msg.Show(this, L.T("No failed files to retry.", "لا توجد ملفات فاشلة لإعادة المحاولة.", "Aucun fichier échoué à réessayer."),
+                    "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            CopyJob last = jobs.Count > 0 ? jobs[jobs.Count - 1] : null;
+            AddJob(new CopyJob(src, last != null ? last.Dest : "", last != null && last.Move));
         }
 
         // Error report popup: full per-file error text with a copy-to-clipboard button.
@@ -3745,6 +4617,8 @@ namespace SuperCopyApp
             f.BackColor = Theme.Bg;
             f.ForeColor = Theme.Text;
             f.StartPosition = FormStartPosition.CenterParent;
+            f.AutoScaleMode = AutoScaleMode.Dpi;     // coordinates below are 96 dpi design pixels
+            f.AutoScaleDimensions = new SizeF(96F, 96F);
             f.ClientSize = new Size(580, 360);
             f.MinimumSize = new Size(380, 200);
             L.ApplyRtl(f, true);
@@ -3764,8 +4638,8 @@ namespace SuperCopyApp
             bar.Dock = DockStyle.Bottom;
             bar.Height = 46;
             bar.BackColor = Theme.Panel;
-            Button copy = UI.MakeButton(L.T("Copy", "نسخ", "Copier"), 84, Color.FromArgb(70, 90, 170));
-            Button close = UI.MakeButton(L.T("Close", "إغلاق", "Fermer"), 84, Color.FromArgb(120, 120, 130));
+            Button copy = UI.MakeButton(L.T("&Copy", "نسخ (&C)", "&Copier"), 84, Color.FromArgb(70, 90, 170));
+            Button close = UI.MakeButton(L.T("C&lose", "إغلاق (&L)", "&Fermer"), 84, Color.FromArgb(120, 120, 130));
             copy.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             copy.Location = new Point(f.ClientSize.Width - 190, 9);
@@ -3811,7 +4685,7 @@ namespace SuperCopyApp
             lv.Visible = !on;
             bottom.Visible = !on;
             jobBox.Visible = !on && jobs.Count >= 2;
-            btnMode.Text = on ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
+            btnMode.Text = on ? L.T("F&iles", "الملفات (&I)", "F&ichiers") : L.T("Co&mact", "مضغوط (&M)", "Co&mact");
             MaximizeBox = !on;
             if (on)
             {
@@ -3899,30 +4773,33 @@ namespace SuperCopyApp
             int w = lv.ClientSize.Width - others;
             if (w < 120) w = 120;
             if (colFile.Width != w) colFile.Width = w;
+            LayoutScrollBars();
         }
 
         // Column 0 is File in English/French; in RTL the physical order is
         // reversed so the primary column sits on the right like Windows itself.
+        // Column widths are 96 dpi design pixels: the list control is not scaled
+        // by the form's AutoScaleMode, so they are scaled by hand.
         void BuildColumns()
         {
             lv.Columns.Clear();
             if (L.Rtl)
             {
-                lv.Columns.Add(L.T("Status", "الحالة", "État"), 120);
-                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), 90);
-                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), 85);
-                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), 150);
-                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), 80);
-                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), 300);
+                lv.Columns.Add(L.T("Status", "الحالة", "État"), Theme.ScalePx(120));
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(90));
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(85));
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(150));
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(80));
+                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), Theme.ScalePx(300));
             }
             else
             {
-                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), 300);
-                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), 80);
-                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), 150);
-                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), 85);
-                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), 90);
-                lv.Columns.Add(L.T("Status", "الحالة", "État"), 120);
+                colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), Theme.ScalePx(300));
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(80));
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(150));
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(85));
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(90));
+                lv.Columns.Add(L.T("Status", "الحالة", "État"), Theme.ScalePx(120));
             }
             lv_Resize(null, EventArgs.Empty);
         }
@@ -3932,6 +4809,12 @@ namespace SuperCopyApp
             if (settingSel) return;
             int i = jobBox.SelectedIndex;
             if (i >= 0 && i < jobs.Count) SetCur(jobs[i]);
+        }
+
+        void jobBox_OpenDest(object s, EventArgs e)
+        {
+            int i = jobBox.SelectedIndex;
+            if (i >= 0 && i < jobs.Count) OpenFolder(jobs[i].Dest);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -3965,28 +4848,78 @@ namespace SuperCopyApp
             try { timer.Stop(); timer.Dispose(); } catch { }
             try { tray.Visible = false; tray.Dispose(); } catch { }
             try { trayMenu.Dispose(); } catch { }
+            try { tip.Dispose(); } catch { }
             try { ConflictPrompt.Ask = null; } catch { }
         }
 
         // ------------------------------------------------------------
         //  owner-drawn file list
         // ------------------------------------------------------------
+        // the six cells of a row are painted one after the other: the row -> item lookup that the
+        // retrieve step already did is reused instead of walking the queue for every cell
+        CopyItem RowItem(int row, out CopyJob job)
+        {
+            if (row == rowCacheIndex) { job = rowCacheJob; return rowCacheItem; }
+            return ListItem(row, out job);
+        }
+
         void lv_Retrieve(object s, RetrieveVirtualItemEventArgs e)
         {
             CopyJob oj;
             CopyItem it = ListItem(e.ItemIndex, out oj);
-            // the text is painted by lv_DrawSub, but the real values make the list
-            // readable for screen readers and for copying a row
+            rowCacheIndex = e.ItemIndex; rowCacheItem = it; rowCacheJob = oj;
+            // the cells are painted by lv_DrawSub, but real values in the item make the row
+            // complete for screen readers and for copying it out of the list. A fresh item per
+            // row: the control keeps its own state (hover, focus, selection) on the item object,
+            // and a shared instance shows it on the wrong row
+            bool ps = it != null && oj != null && oj.Paused;
             e.Item = new ListViewItem(new string[]
             {
                 it == null || it.Name == null ? "" : it.Name,
-                it == null || it.Src == null ? "" : Fmt.Size(it.Size),
-                "", "", "", ""
+                it == null || it.SizeText == null ? "" : it.SizeText,
+                it == null ? "" : ProgressText(it),
+                it == null ? "" : SpeedText(it, ps),
+                it == null ? "" : EtaText(it, ps),
+                it == null ? "" : StatusText(it, ps)
             });
+        }
+
+        // text versions of the five other cells, shared by the paint code and lv_Retrieve
+        static string ProgressText(CopyItem it)
+        {
+            int st = it.State;
+            return (st == 0 || it.Src == null) ? "" : ((int)(it.Fraction * 100)) + "%";
+        }
+
+        static string SpeedText(CopyItem it, bool paused)
+        {
+            if (it.State != 1) return "";
+            return paused ? L.T("paused", "متوقف", "en pause") : Fmt.Size((long)it.Speed) + "/s";
+        }
+
+        static string EtaText(CopyItem it, bool paused)
+        {
+            if (it.State != 1 || paused || it.Speed <= 1) return "";
+            double left = (it.Size - Interlocked.Read(ref it.Done)) / it.Speed;
+            return Fmt.Time(left);
+        }
+
+        static string StatusText(CopyItem it, bool paused)
+        {
+            switch (it.State)
+            {
+                case 1: return paused ? L.T("Paused", "متوقف", "En pause") : L.T("Copying", "نسخ", "Copie");
+                case 2: return L.T("Done", "تم", "Terminé");
+                case 3: return L.T("Error: ", "خطأ: ", "Erreur : ") + it.Error;
+                case 4: return L.T("Skipped", "تم التخطي", "Ignoré");
+                case 5: return L.T("Cancelled", "ملغى", "Annulé");
+                default: return L.T("Pending", "قيد الانتظار", "En attente");
+            }
         }
 
         void lv_DrawHeader(object s, DrawListViewColumnHeaderEventArgs e)
         {
+            e.DrawDefault = false;   // the native header look must never leak over the designed one
             Rectangle r = e.Bounds;
             if (r.Width <= 0 || r.Height <= 0) return;
             using (LinearGradientBrush lb = new LinearGradientBrush(r, Theme.Panel2, Theme.Panel, 90f))
@@ -4003,24 +4936,57 @@ namespace SuperCopyApp
 
         void lv_DrawItem(object s, DrawListViewItemEventArgs e)
         {
-            e.DrawDefault = false;   // everything is painted per cell in DrawSubItem
+            // The control repaints a single item by itself (hover, focus, selection) and then asks
+            // for column 0 only - a row fill alone would leave nothing but the file name with the
+            // rest of the row blank. Painting every cell here makes any item repaint a whole row.
+            e.DrawDefault = false;
+            Graphics g = e.Graphics;
+            bool sel = (e.State & ListViewItemStates.Selected) != 0;
+            int y = e.Bounds.Y, h = e.Bounds.Height;
+            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow, e.ItemIndex),
+                new Rectangle(0, y, lv.ClientSize.Width, h));
+            CopyJob oj;
+            CopyItem it = RowItem(e.ItemIndex, out oj);
+            if (it == null) return;
+            // the cells start at the row's own left edge, so a horizontally scrolled row keeps its
+            // columns lined up with the header; RTL reverses the meaning of the column index only
+            // (the control keeps the physical order, the columns are added in reverse)
+            int x = e.Bounds.X;
+            for (int i = 0; i < lv.Columns.Count; i++)
+            {
+                int w = lv.Columns[i].Width;
+                PaintCell(g, L.Rtl ? lv.Columns.Count - 1 - i : i, new Rectangle(x, y, w, h), it, oj);
+                x += w;
+            }
+        }
+
+        // row background: selection > hover > zebra stripes
+        Brush RowBack(bool sel, bool hot, int index)
+        {
+            if (sel) return Theme.BrSel;
+            if (hot) return Theme.BrHover;
+            return (index & 1) == 0 ? Theme.BrRow1 : Theme.BrRow2;
         }
 
         void lv_DrawSub(object s, DrawListViewSubItemEventArgs e)
         {
+            e.DrawDefault = false;   // native default draw paints hot/selection tints over the row
             CopyJob oj;
-            CopyItem it = ListItem(e.ItemIndex, out oj);
+            CopyItem it = RowItem(e.ItemIndex, out oj);
             Graphics g = e.Graphics;
             Rectangle r = e.Bounds;
             if (e.ColumnIndex == 0) r.Width = lv.Columns[0].Width;   // first-column bounds quirk
             bool sel = (e.ItemState & ListViewItemStates.Selected) != 0;
-            g.FillRectangle(sel ? Theme.BrSel : ((e.ItemIndex & 1) == 0 ? Theme.BrRow1 : Theme.BrRow2), r);
+            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow, e.ItemIndex), r);
             if (it == null) return;
+            PaintCell(g, L.Rtl ? lv.Columns.Count - 1 - e.ColumnIndex : e.ColumnIndex, r, it, oj);
+        }
 
+        // one cell of a row; logical column 0 = file name ... 5 = status
+        void PaintCell(Graphics g, int logical, Rectangle r, CopyItem it, CopyJob oj)
+        {
             Rectangle tr = new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 10), r.Height);
             bool paused = oj != null && oj.Paused;
-            int logical = lv.Columns.Count - 1 - e.ColumnIndex;
-            if (!L.Rtl) logical = e.ColumnIndex;
             switch (logical)
             {
                 case 0:
@@ -4029,7 +4995,7 @@ namespace SuperCopyApp
                         TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 1:
-                    TextRenderer.DrawText(g, it.Src == null ? "" : Fmt.Size(it.Size), Theme.Cell, tr, Theme.Dim,
+                    TextRenderer.DrawText(g, it.SizeText == null ? "" : it.SizeText, Theme.Cell, tr, Theme.Dim,
                         L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 2:
@@ -4044,29 +5010,28 @@ namespace SuperCopyApp
                     break;
                 case 3:
                     if (it.State == 1)
-                        TextRenderer.DrawText(g, paused ? L.T("paused", "متوقف", "en pause") : Fmt.Size((long)it.Speed) + "/s", Theme.Cell, tr, Theme.Text,
+                        TextRenderer.DrawText(g, SpeedText(it, paused), Theme.Cell, tr, Theme.Text,
                             L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 4:
                     if (it.State == 1 && !paused && it.Speed > 1)
-                    {
-                        double left = (it.Size - Interlocked.Read(ref it.Done)) / it.Speed;
-                        TextRenderer.DrawText(g, Fmt.Time(left), Theme.Cell, tr, Theme.Text,
+                        TextRenderer.DrawText(g, EtaText(it, paused), Theme.Cell, tr, Theme.Text,
                             L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-                    }
                     break;
                 case 5:
                     {
-                        string t; Color c;
+                        string t;
+                        Color c;
                         switch (it.State)
                         {
-                            case 1: t = paused ? L.T("Paused", "متوقف", "En pause") : L.T("Copying", "نسخ", "Copie"); c = paused ? Theme.Orange : Theme.Cyan; break;
-                            case 2: t = L.T("Done", "تم", "Terminé"); c = Theme.Green; break;
-                            case 3: t = L.T("Error: ", "خطأ: ", "Erreur : ") + it.Error; c = Theme.Red; break;
-                            case 4: t = L.T("Skipped", "تم التخطي", "Ignoré"); c = Theme.Dim; break;
-                            case 5: t = L.T("Cancelled", "ملغى", "Annulé"); c = Theme.Orange; break;
-                            default: t = L.T("Pending", "قيد الانتظار", "En attente"); c = Theme.Dim; break;
+                            case 1: c = paused ? Theme.Orange : Theme.Cyan; break;
+                            case 2: c = Theme.Green; break;
+                            case 3: c = Theme.Red; break;
+                            case 4: c = Theme.Dim; break;
+                            case 5: c = Theme.Orange; break;
+                            default: c = Theme.Dim; break;
                         }
+                        t = StatusText(it, paused);
                         TextRenderer.DrawText(g, t, Theme.Cell, tr, c, CellFlags);
                     }
                     break;
@@ -4110,6 +5075,7 @@ namespace SuperCopyApp
         ComboBox cmbBuf, cmbConf, cmbEngine, cmbLang;
         CheckBox chkClose, chkVerify, chkDefault;
         Label lblState;
+        Button btnUpdate;
         bool startupChecked;   // startup install/update suggestion runs once per window
         static readonly int[] BufSizes = new int[] { 64, 256, 1024, 4096 };
 
@@ -4132,6 +5098,8 @@ namespace SuperCopyApp
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
+            AutoScaleDimensions = new SizeF(96F, 96F);
             ClientSize = new Size(430, 578);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
@@ -4250,8 +5218,8 @@ namespace SuperCopyApp
             Controls.Add(chkDefault);
 
             Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 390, Theme.Cyan));
-            Button bi2 = UI.MakeButton(L.T("Install menu", "تثبيت القائمة", "Installer le menu"), 180, Color.FromArgb(40, 150, 100));
-            Button br = UI.MakeButton(L.T("Remove menu", "إزالة القائمة", "Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
+            Button bi2 = UI.MakeButton(L.T("&Install menu", "تثبيت القائمة (&I)", "&Installer le menu"), 180, Color.FromArgb(40, 150, 100));
+            Button br = UI.MakeButton(L.T("&Remove menu", "إزالة القائمة (&R)", "&Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
             bi2.Location = new Point(20, 412);
             br.Location = new Point(220, 412);
             bi2.Click += new EventHandler(OnInstall);
@@ -4266,18 +5234,18 @@ namespace SuperCopyApp
             RefreshState();
 
             Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 508, Theme.Text));
-            Button babt = UI.MakeButton(L.T("About", "حول", "À propos"), 84, Color.FromArgb(90, 96, 130));
+            Button babt = UI.MakeButton(L.T("&About", "حول (&A)", "À &propos"), 84, Color.FromArgb(90, 96, 130));
             babt.Location = new Point(132, 502);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
-            Button bupd = UI.MakeButton(L.T("Check for updates", "التحقق من التحديثات", "Rechercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
-            bupd.Location = new Point(226, 502);
-            bupd.Click += new EventHandler(OnCheckUpdate);
-            Controls.Add(bupd);
+            btnUpdate = UI.MakeButton(L.T("&Check for updates", "التحقق من التحديثات (&C)", "Rec&hercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
+            btnUpdate.Location = new Point(226, 502);
+            btnUpdate.Click += new EventHandler(OnCheckUpdate);
+            Controls.Add(btnUpdate);
 
-            Button ok = UI.MakeButton(L.T("Save", "حفظ", "Enregistrer"), 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
-            Button reset = UI.MakeButton(L.T("Reset to default", "استعادة الافتراضي", "Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
+            Button ok = UI.MakeButton(L.T("&Save", "حفظ (&S)", "&Enregistrer"), 90, Color.FromArgb(70, 90, 170));
+            Button cancel = UI.MakeButton(L.T("Cance&l", "إلغاء (&C)", "&Annuler"), 90, Color.FromArgb(70, 76, 110));
+            Button reset = UI.MakeButton(L.T("Reset to &default", "استعادة الافتراضي (&D)", "&Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
             ok.Location = new Point(236, 542);
             cancel.Location = new Point(334, 542);
             reset.Location = new Point(20, 542);
@@ -4343,7 +5311,7 @@ namespace SuperCopyApp
             catch (Exception ex) { Msg.Show(this, ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
-        void OnCheckUpdate(object s, EventArgs e) { Updates.Check(this); }
+        void OnCheckUpdate(object s, EventArgs e) { Updates.Check(this, btnUpdate); }
 
         void OnAbout(object s, EventArgs e)
         {
@@ -4426,7 +5394,7 @@ namespace SuperCopyApp
         }
         public bool SaveForSession { get { return chkSession.Checked; } }
 
-        public ConflictDialog(string dst)
+        public ConflictDialog(string src, string dst)
         {
             Text = L.T("Super Copy - File exists", "Super Copy - الملف موجود", "Super Copy - Le fichier existe");
             Font = Theme.Cell;
@@ -4436,7 +5404,9 @@ namespace SuperCopyApp
             MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(400, 236);
+            AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            ClientSize = new Size(400, 268);
             L.ApplyRtl(this, true);
 
             Controls.Add(MakeLabel(L.T("A file already exists in the destination:", "يوجد ملف بهذا الاسم في الوجهة:", "Un fichier existe déjà dans la destination :"), 16, 14, Theme.Text));
@@ -4446,10 +5416,15 @@ namespace SuperCopyApp
             name.SetBounds(16, 36, 368, 18);
             Controls.Add(name);
 
-            string[] cap = { L.T("Overwrite the existing file", "استبدال الملف الموجود", "Remplacer le fichier existant"),
-                             L.T("Skip this file", "تخطي هذا الملف", "Ignorer ce fichier"),
-                             L.T("Keep both (rename the incoming file)", "الاحتفاظ بالاثنين (إعادة تسمية الملف الوارد)", "Garder les deux (renommer le fichier entrant)"),
-                             L.T("Overwrite only if the source is newer", "استبدال فقط إذا كان المصدر أحدث", "Remplacer seulement si la source est plus récente") };
+            // size and last write time of both files: the "overwrite if newer" choice
+            // needs them, a file name alone is not enough to decide
+            Controls.Add(MakeLabel(L.T("Existing: ", "الموجود: ", "Existant : ") + FileInfoText(dst), 16, 58, Theme.Dim));
+            Controls.Add(MakeLabel(L.T("Incoming: ", "الوارد: ", "Entrant : ") + FileInfoText(src), 16, 76, Theme.Dim));
+
+            string[] cap = { L.T("&Overwrite the existing file", "استبدال الملف الموجود (&O)", "&Remplacer le fichier existant"),
+                             L.T("&Skip this file", "تخطي هذا الملف (&S)", "&Ignorer ce fichier"),
+                             L.T("&Keep both (rename the incoming file)", "الاحتفاظ بالاثنين (إعادة تسمية الملف الوارد) (&K)", "&Garder les deux (renommer le fichier entrant)"),
+                             L.T("Overwrite only if the source is &newer", "استبدال فقط إذا كان المصدر أحدث (&N)", "Remplacer seulement si la source est plus récen&te") };
             for (int i = 0; i < cap.Length; i++)
             {
                 opts[i] = new RadioButton();
@@ -4457,29 +5432,39 @@ namespace SuperCopyApp
                 opts[i].AutoSize = true;
                 opts[i].ForeColor = Theme.Text;
                 opts[i].BackColor = Theme.Bg;
-                opts[i].Location = new Point(18, 64 + i * 24);
+                opts[i].Location = new Point(18, 104 + i * 24);
                 Controls.Add(opts[i]);
             }
             opts[1].Checked = true;      // "skip" is the safe default: Enter never destroys a file
 
             chkSession = new CheckBox();
-            chkSession.Text = L.T("Do this for the rest of this session", "افعل ذلك لبقية هذه الجلسة", "Faire cela pour le reste de la session");
+            chkSession.Text = L.T("&Do this for the rest of this session", "افعل ذلك لبقية هذه الجلسة (&D)", "&Faire cela pour le reste de la session");
             chkSession.AutoSize = true;
             chkSession.ForeColor = Theme.Text;
             chkSession.BackColor = Theme.Bg;
-            chkSession.Location = new Point(18, 168);
+            chkSession.Location = new Point(18, 204);
             Controls.Add(chkSession);
 
             Button ok = UI.MakeButton(L.T("OK", "موافق", "OK"), 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
-            ok.Location = new Point(196, 196);
-            cancel.Location = new Point(294, 196);
+            Button cancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 90, Color.FromArgb(70, 76, 110));
+            ok.Location = new Point(196, 232);
+            cancel.Location = new Point(294, 232);
             ok.Click += new EventHandler(OnOk);
             cancel.Click += new EventHandler(OnCancel);
             Controls.Add(ok);
             Controls.Add(cancel);
             AcceptButton = ok;
             CancelButton = cancel;
+        }
+
+        static string FileInfoText(string path)
+        {
+            try
+            {
+                FileInfo f = new FileInfo(path);
+                return Fmt.Size(f.Exists ? f.Length : 0) + " - " + f.LastWriteTime.ToString("yyyy-MM-dd HH:mm");
+            }
+            catch { return "?"; }
         }
 
         Label MakeLabel(string text, int x, int y, Color c)

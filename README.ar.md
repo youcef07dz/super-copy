@@ -17,7 +17,7 @@
 **ناسخ ملفات خفيف متعدد الخيوط لويندوز XP → 11**<br>
 مع تكامل سلس في قائمة النقر بزر الماوس الأيمن في المستكشف
 
-[![الإصدار 3.0](https://img.shields.io/badge/version-3.0-2EA44F?style=flat-square)](HISTORY.md)
+[![الإصدار 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
 [![الترخيص: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![المنصة: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -33,6 +33,8 @@
 </div>
 
 > [!TIP]
+> **جديد في v4:** قائمة الملفات أصبحت لها **شرائط تمرير خاصة بها** (انقر للقفز، اسحب المقبض)، والسطر تحت مؤشر الماوس يظهر بتظليل منفصل، والتطبيق **DPI aware** - أعمدة وارتفاعات صفوف واضحة عند 125-200٪. تكلفة التحقق انخفضت للنصف: تُحسب بصمة المصدر *أثناء النسخ*.
+>
 > **جديد في v3:** يمكن أن يصبح Super Copy هو **النسخ الافتراضي**: اضغط `Ctrl+V` داخل نافذة مجلد فيتم اللصق بواسطة Super Copy (نفس المحرك ونفس قواعد التعارض وتحقق XXH3). يمكن تشغيله أو إيقافه من الإعدادات.
 >
 > **جديد في v2:** يتم التحقق من كل عملية نسخ أو نقل باستخدام **XXH3-64**. عند عدم التطابق يُحذف النسخ التالف، وتُستعاد النسخة التي تم استبدالها، ويبقى المصدر سليماً.
@@ -196,7 +198,7 @@ SuperCopy.exe /selftest
 
 ## 🗂 السجل
 
-ما الجديد في الإصدار v3 والإصدارات السابقة: [HISTORY.md](HISTORY.md). الكود والملف التنفيذي للإصدارين v1 و v2 محفوظان في [`old/v1`](old/v1) و [`old/v2`](old/v2).
+ما الجديد في الإصدار v4 والإصدارات السابقة: [HISTORY.md](HISTORY.md). الكود والملف التنفيذي للإصدارات v1 و v2 و v3 محفوظة في [`old/v1`](old/v1) و [`old/v2`](old/v2) و [`old/v3`](old/v3).
 
 ---
 

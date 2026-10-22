@@ -15,7 +15,7 @@
 **Copieur de fichiers léger et multi-thread pour Windows XP → 11**<br>
 avec une intégration transparente au menu contextuel de l'Explorateur
 
-[![Version 3.0](https://img.shields.io/badge/version-3.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
 [![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Plateforme : Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 </div>
 
 > [!TIP]
+> **Nouveau dans la v4 :** la liste de fichiers a ses **propres barres de défilement** (clic pour sauter, glisser la poignée), la ligne sous la souris reçoit une teinte de survol, et l'application est **DPI aware** - colonnes et hauteurs de ligne nettes à 125-200 %. La vérification coûte deux fois moins : la source est hachée *pendant la copie*.
+>
 > **Nouveau dans la v3 :** Super Copy peut devenir la **copie par défaut** : appuyez sur `Ctrl+V` dans une fenêtre de dossier et le collage est fait par Super Copy (même moteur, mêmes règles de conflit, vérification XXH3). Activable/désactivable dans les Paramètres.
 >
 > **Nouveau dans la v2 :** chaque copie et chaque déplacement est vérifié avec **XXH3-64**. En cas d'écart, la copie défectueuse est supprimée, le fichier écrasé est restauré et la source est conservée.
@@ -194,7 +196,7 @@ Lancez `build.cmd` depuis la racine du dépôt.
 
 ## 🗂 Historique
 
-Nouveautés de la v3 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire des v1 et v2 sont archivés dans [`old/v1`](old/v1) et [`old/v2`](old/v2).
+Nouveautés de la v4 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire des v1, v2 et v3 sont archivés dans [`old/v1`](old/v1), [`old/v2`](old/v2) et [`old/v3`](old/v3).
 
 ---
 

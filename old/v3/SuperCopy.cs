@@ -10,6 +10,7 @@
 //    SuperCopy.exe /cut  <paths...>   remember items for a move (silent)
 //    SuperCopy.exe /paste <folder>    copy/move remembered items here
 //    SuperCopy.exe /queue             run jobs from the hand-off queue (elevated retry, no args)
+//    SuperCopy.exe /agent             background helper: Ctrl+V in Explorer copies with Super Copy
 //
 //  Contents (top to bottom):
 //    Program ......... entry point, command-line modes
@@ -22,7 +23,7 @@
 //    Updates ......... manual update check against GitHub (update.txt)
 //    ShellIntegration  Explorer right-click menu install/remove
 //    Theme/Fmt/Gfx/IconMaker  colours, drawing helpers, tray icon
-//    CopyItem/CopyJob  copy engine (scan, workers, DoCopy/CopyData/RoboCopy/FastCopy)
+//    CopyItem/CopyJob  copy engine (scan, workers, DoCopy/CopyData/RoboCopy)
 //    BufferedListView/HeaderPanel/TitleBar/UI  small UI controls
 //    ConflictPrompt .. "Ask first" hook
 //    MainForm ........ progress window
@@ -32,15 +33,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
@@ -52,11 +52,11 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("1.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.0.0")]
 [assembly: System.Reflection.AssemblyTrademark("Super Copy")]
-// major part must mirror Updates.Current (v1 = 1.0.0.0); bump both + update.txt on release
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+// major part must mirror Updates.Current (v2 = 2.0.0.0); bump both + update.txt on release
+[assembly: System.Reflection.AssemblyVersion("3.0.0.0")]
 
 namespace SuperCopyApp
 {
@@ -69,7 +69,7 @@ namespace SuperCopyApp
         [STAThread]
         static int Main(string[] args)
         {
-            string mode = args.Length > 0 ? args[0].ToLower() : "/settings";
+            string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "/settings";
             List<string> rest = new List<string>();
             for (int i = 1; i < args.Length; i++)
             {
@@ -87,7 +87,9 @@ namespace SuperCopyApp
                 catch { }
                 return 0;
             }
-            return Gui(mode, rest);
+            int rc = Gui(mode, rest);
+            try { IconMaker.FreeIcons(); } catch { }
+            return rc;
         }
 
         static int Gui(string mode, List<string> rest)
@@ -107,6 +109,8 @@ namespace SuperCopyApp
                     case "/queue":
                         Application.Run(new MainForm(null));   // PollQueue feeds it the queued retry jobs
                         return 0;
+                    case "/agent":
+                        return HookAgent.Run();
                     case "/install":
                         Installer.Install();
                         Msg.Show(L.T("Explorer menu installed.", "تم تثبيت قائمة المستكشف.", "Menu de l'Explorateur installé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -115,9 +119,15 @@ namespace SuperCopyApp
                         Installer.Remove();
                         Msg.Show(L.T("Explorer menu removed.", "تمت إزالة قائمة المستكشف.", "Menu de l'Explorateur supprimé."), "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 0;
-                    default:
+                    case "/settings":
+                        HookAgent.Ensure();     // the helper starts with Windows while it is the default copy
                         Application.Run(new SettingsForm());
                         return 0;
+                    default:
+                        // an unknown switch must not silently start the helper or a window
+                        Msg.Show(L.T("Unknown option: ", "خيار غير معروف: ", "Option inconnue : ") + mode,
+                                 "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return 2;
                 }
             }
             catch (Exception ex)
@@ -240,6 +250,12 @@ namespace SuperCopyApp
         {
             return MessageBox.Show(owner, text, caption, buttons, icon, MessageBoxDefaultButton.Button1, Opts);
         }
+
+        // a question where the safe answer is not the first button
+        public static DialogResult ShowSafe(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            return MessageBox.Show(owner, text, caption, buttons, icon, MessageBoxDefaultButton.Button2, Opts);
+        }
     }
 
     // ================================================================
@@ -247,7 +263,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Paths
     {
-        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, ExeInstalled;
+        public static string AppDir, ClipFile, ClipDevice, QueueDir, Ini, ExeInstalled, ExeLegacy;
 
         public static void Init()
         {
@@ -258,36 +274,68 @@ namespace SuperCopyApp
             ClipDevice = Path.Combine(AppDir, "clipboard.device.txt"); // separate so it never clobbers a pending /copy
             QueueDir = Path.Combine(AppDir, "queue");
             Ini = Path.Combine(AppDir, "settings.ini");
-            ExeInstalled = Path.Combine(AppDir, "SuperCopy.exe");
+            // the installed copy carries its own name: two "SuperCopy.exe" in the task
+            // manager (the app the user starts and this one) could not be told apart
+            ExeInstalled = Path.Combine(AppDir, "SuperCopyHelper.exe");
+            ExeLegacy = Path.Combine(AppDir, "SuperCopy.exe");     // older installs: the app's own name
             try { Directory.CreateDirectory(QueueDir); } catch { }
             try { File.Delete(ExeInstalled + ".old"); } catch { }   // leftover from removing while our own copy ran
+            try { File.Delete(ExeLegacy + ".old"); } catch { }      // same, for the older file name
+            // a claimed job file older than 10 minutes is a leftover from a crash: clean it up
+            try
+            {
+                string[] stale = Directory.GetFiles(QueueDir, "*.claimed");
+                DateTime lim = DateTime.Now.AddMinutes(-10);
+                for (int i = 0; i < stale.Length; i++)
+                    if (File.GetLastWriteTime(stale[i]) < lim) File.Delete(stale[i]);
+            }
+            catch { }
         }
 
-        // write via a temp file, then overwrite; a crash mid-write cannot truncate the real file
+        // write via a temp file, then swap it in; a crash mid-write cannot truncate the real file
         public static void WriteAllLinesSafe(string path, string[] lines, Encoding enc)
         {
             string tmp = path + ".tmp";
             try { File.Delete(tmp); } catch { }
             if (enc == null) File.WriteAllLines(tmp, lines); else File.WriteAllLines(tmp, lines, enc);
-            File.Copy(tmp, path, true);
-            try { File.Delete(tmp); } catch { }
+            // File.Copy overwrites in place: a reader can see a half-written file.
+            // File.Replace/Move swap the name, so a reader always sees one whole file.
+            try
+            {
+                if (File.Exists(path))
+                {
+                    try { File.Replace(tmp, path, null); }
+                    catch (Exception)
+                    {
+                        File.Delete(path);      // fallback for filesystems without Replace
+                        File.Move(tmp, path);
+                    }
+                }
+                else File.Move(tmp, path);
+            }
+            finally { try { File.Delete(tmp); } catch { } }
         }
     }
 
     static class Settings
     {
-        const int DefaultConcurrency = 2;             // single source of truth for "Reset to default"
-        const int DefaultBufferKB = 256;
-        const int DefaultConflict = 0;
-        const int DefaultEngine = 0;
+        public const int DefaultConcurrency = 2;             // single source of truth for "Reset to default"
+        public const int DefaultBufferKB = 256;
+        public const int DefaultConflict = 0;
+        public const int DefaultEngine = 0;
+        public const bool DefaultVerify = true;
+        public const bool DefaultDefaultCopy = true;    // Ctrl+V in Explorer is done by Super Copy
 
         public static volatile int Concurrency = DefaultConcurrency;   // simultaneous file copies (1..32) when smart disabled
         public static volatile bool SmartConcurrency = true;           // use file-size based concurrency (default)
         public static volatile int BufferKB = DefaultBufferKB;         // copy buffer per thread
         public static volatile int Conflict = DefaultConflict;         // 0 overwrite, 1 skip, 2 keep both, 3 overwrite if newer, 4 ask
         public static volatile int AskSession = -1;   // "ask first" answer kept for this run only (-1 = none yet)
+        public static int AskGen;                 // bumped when a prompt is cancelled: the other waiters skip too
         public static int AskPrompting;               // 1 while a worker owns the "ask first" dialog (Interlocked)
-        public static volatile int Engine = DefaultEngine;             // 0 built-in, 1 robocopy, 2 CopyFileEx
+        public static volatile int Engine = DefaultEngine;             // 0 built-in, 1 robocopy
+        public static volatile bool Verify = DefaultVerify;            // hash source+destination after every copy/move
+        public static volatile bool DefaultCopy = DefaultDefaultCopy;  // Ctrl+V in Explorer runs Super Copy instead of the shell
         public static bool RobocopyAvailable { get { try { return File.Exists(Path.Combine(Environment.SystemDirectory, "robocopy.exe")); } catch { return false; } } }
         public static bool AutoClose = false;
         public static bool Compact = false;           // start in compact (header-only) mode
@@ -304,7 +352,7 @@ namespace SuperCopyApp
                 {
                     int i = line.IndexOf('=');
                     if (i <= 0) continue;
-                    string k = line.Substring(0, i).Trim().ToLower();
+                    string k = line.Substring(0, i).Trim().ToLowerInvariant();
                     string v = line.Substring(i + 1).Trim();
                     int n;
                     switch (k)
@@ -313,7 +361,9 @@ namespace SuperCopyApp
                         case "smartconcurrency": SmartConcurrency = (v == "1"); break;
                         case "bufferkb": if (int.TryParse(v, out n)) BufferKB = Clamp(n, 16, 16384); break;
                         case "conflict": if (int.TryParse(v, out n)) Conflict = Clamp(n, 0, 4); break;
-                        case "engine": if (int.TryParse(v, out n)) Engine = Clamp(n, 0, 2); break;
+                        case "engine": if (int.TryParse(v, out n)) Engine = Clamp(n, 0, 1); break;
+                        case "verify": Verify = (v == "1"); break;
+                        case "defaultcopy": DefaultCopy = (v == "1"); break;
                         case "autoclose": AutoClose = (v == "1"); break;
                         case "compact": Compact = (v == "1"); break;
                         case "language": if (int.TryParse(v, out n)) Language = Clamp(n, 0, 3); break;
@@ -333,6 +383,8 @@ namespace SuperCopyApp
                     "BufferKB=" + BufferKB,
                     "Conflict=" + Conflict,
                     "Engine=" + Engine,
+                    "Verify=" + (Verify ? "1" : "0"),
+                    "DefaultCopy=" + (DefaultCopy ? "1" : "0"),
                     "AutoClose=" + (AutoClose ? "1" : "0"),
                     "Compact=" + (Compact ? "1" : "0"),
                     "Language=" + Language }, null);
@@ -349,6 +401,8 @@ namespace SuperCopyApp
             BufferKB = DefaultBufferKB;
             Conflict = DefaultConflict;
             Engine = DefaultEngine;
+            Verify = DefaultVerify;
+            DefaultCopy = DefaultDefaultCopy;
             AutoClose = false;
             Language = 0;
         }
@@ -505,77 +559,20 @@ namespace SuperCopyApp
     }
 
     // ================================================================
-    //  Fast system copy (engine 2): CopyFileEx with NO_BUFFERING.
-    //  In kernel32 since Windows XP, so it covers the whole XP..11 range.
-    //  The copy runs entirely inside the OS:
-    //    - no managed buffer per file (built-in engine allocates BufferKB
-    //      per worker thread; robocopy spawns a process per file)
-    //    - NO_BUFFERING bypasses the standby cache: big copies do not trash
-    //      the rest of the system's memory on old hardware
-    //    - low CPU: no per-chunk managed transitions, no P/Invoke churn
-    //  Pause/cancel are honoured inside the progress callback, and the
-    //  callback throttles its reports (512 KiB or 150 ms) so the two
-    //  Interlocked.Add calls do not become a contention point on a
-    //  single-core machine.
+    //  a hidden window that never steals the focus
     // ================================================================
-    static class FastCopyNative
+    class HostForm : Form
     {
-        public const int PROGRESS_CONTINUE = 0;
-        public const int PROGRESS_CANCEL = 1;
-        public const int CALLBACK_CHUNK_FINISHED = 0;
-        public const int COPY_FILE_NO_BUFFERING = 0x00001000;
-
-        // LARGE_INTEGER marshals as Int64; LPBOOL as ref Int32
-        public delegate int ProgressRoutine(
-            long totalSize, long totalTransferred,
-            long streamSize, long streamTransferred,
-            uint streamNumber, uint reason,
-            IntPtr sourceFile, IntPtr destFile, IntPtr data);
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        public static extern bool CopyFileEx(string src, string dst,
-            ProgressRoutine routine, IntPtr data, ref int cancel, int flags);
-
-        // one static, rooted delegate: it can never be GC'd mid-copy
-        public static readonly ProgressRoutine Callback = new ProgressRoutine(OnProgress);
-
-        static int OnProgress(long totalSize, long totalTransferred, long streamSize,
-            long streamTransferred, uint streamNumber, uint reason,
-            IntPtr sourceFile, IntPtr destFile, IntPtr data)
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
         {
-            if (reason != CALLBACK_CHUNK_FINISHED)
-                return PROGRESS_CONTINUE;           // stream switch: nothing to report
-
-            FastCopyCtx c = (FastCopyCtx)GCHandle.FromIntPtr(data).Target;
-
-            // pause: stall the copy inside the callback (~zero CPU while paused)
-            while (c.Job.Paused && !c.Job.Cancelled) Thread.Sleep(50);
-            if (c.Job.Cancelled) { c.CancelSeen = true; return PROGRESS_CANCEL; }
-
-            // throttle: report at most every 512 KiB or 150 ms
-            long delta = totalTransferred - c.Reported;
-            if (delta < 524288 && totalTransferred != totalSize)
+            get
             {
-                if (Environment.TickCount - c.LastReport < 150) return PROGRESS_CONTINUE;
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x08000000;      // WS_EX_NOACTIVATE
+                return cp;
             }
-            if (delta > 0)
-            {
-                Interlocked.Add(ref c.Item.Done, delta);
-                Interlocked.Add(ref c.Job.DoneBytes, delta);
-                c.Reported = totalTransferred;
-            }
-            c.LastReport = Environment.TickCount;
-            return PROGRESS_CONTINUE;
         }
-    }
-
-    class FastCopyCtx
-    {
-        public CopyItem Item;
-        public CopyJob Job;
-        public long Reported;
-        public int LastReport;
-        public bool CancelSeen;
     }
 
     // ================================================================
@@ -616,7 +613,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 1;   // must match AssemblyVersion's major part
+        public const int Current = 3;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
@@ -818,30 +815,561 @@ namespace SuperCopyApp
     {
         public static void Install()
         {
+            DropLegacy();   // an older install kept a copy under the app's own name
+            bool wasOn = Settings.DefaultCopy;
             try
             {
                 if (!string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
                 {
                     Directory.CreateDirectory(Paths.AppDir);
+                    // a running helper holds the installed copy: let it leave and free the path
+                    if (wasOn) { Settings.DefaultCopy = false; Settings.Save(); }
+                    RemoveFile(Paths.ExeInstalled, 20);
                     File.Copy(Application.ExecutablePath, Paths.ExeInstalled, true);
+                    if (!File.Exists(Paths.ExeInstalled))
+                        throw new IOException("the program could not be copied to " + Paths.AppDir);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                throw new IOException(ex.Message, ex);
+            }
+            finally { if (wasOn) { Settings.DefaultCopy = true; Settings.Save(); } }
             ShellIntegration.Install(Paths.ExeInstalled);
+            HookAgent.Apply();   // the helper follows the setting: it runs only while Super Copy is the default copy
         }
 
         public static void Remove()
         {
             ShellIntegration.Uninstall();
+            HookAgent.Disable();
+            Settings.DefaultCopy = false;
+            Settings.Save();      // the helper watches settings.ini and leaves within a couple of seconds
+            DropLegacy();         // the old copy may still be running too
+            string exe = Paths.ExeInstalled;
+            if (!File.Exists(exe)) return;
+            bool self = string.Equals(Application.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase);
+            RemoveFile(exe, self ? 1 : 20);   // the helper holds the file while it runs
+        }
+
+        // delete a file that a running copy may be holding: retry for a while,
+        // then rename it away (renaming a running exe works, deleting it does not)
+        internal static bool RemoveFile(string path, int tries)
+        {
+            for (int i = 0; i < tries; i++)
+            {
+                if (!File.Exists(path)) return true;
+                try { File.Delete(path); } catch { }
+                if (!File.Exists(path)) return true;
+                Thread.Sleep(200);
+            }
+            try { File.Move(path, path + ".old"); } catch { }
+            return !File.Exists(path);
+        }
+
+        // an older install kept a copy under the app's own name: two identical
+        // entries in the task manager, and the file could not be deleted while it ran
+        static void DropLegacy()
+        {
+            string legacy = Paths.ExeLegacy;
+            if (!File.Exists(legacy)) return;
+            if (string.Equals(Application.ExecutablePath, legacy, StringComparison.OrdinalIgnoreCase)) return;   // we are it
+            try { File.Delete(legacy); return; } catch { }
+            // the old helper still runs from it: it leaves when it sees the option off
+            bool wasOn = Settings.DefaultCopy;
             try
             {
-                if (!File.Exists(Paths.ExeInstalled)) return;
-                // if we are the installed copy, rename it (works on a locked exe) and sweep it on next start
-                if (string.Equals(Application.ExecutablePath, Paths.ExeInstalled, StringComparison.OrdinalIgnoreCase))
-                    File.Move(Paths.ExeInstalled, Paths.ExeInstalled + ".old");
-                else File.Delete(Paths.ExeInstalled);
+                // the old helper leaves when it sees the option off
+                if (wasOn) { Settings.DefaultCopy = false; Settings.Save(); }
+                RemoveFile(legacy, 20);
             }
             catch { }
+            finally { if (wasOn) { Settings.DefaultCopy = true; Settings.Save(); } }
+        }
+    }
+
+    // ================================================================
+    //  Default-copy agent  (SuperCopy.exe /agent)
+    //
+    //  A small background helper that takes over Ctrl+V inside
+    //  Explorer: the paste is done by Super Copy (same engine, same
+    //  conflict rules, XXH3 verify, progress window) instead of the
+    //  shell's own copy.  It watches Ctrl+V only, only while an
+    //  Explorer window has the focus, and never stores a keystroke.
+    // ================================================================
+    static class HookAgent
+    {
+        delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct GuiThreadInfo
+        {
+            public int cbSize, flags;
+            public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret;
+            public Rectangle rcCaret;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, StringBuilder s, int n);
+        [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto)] static extern IntPtr GetModuleHandle(string name);
+        [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint idThread, ref GuiThreadInfo gti);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
+        [DllImport("user32.dll")] static extern bool OpenClipboard(IntPtr hWndNewOwner);
+        [DllImport("user32.dll")] static extern bool CloseClipboard();
+        [DllImport("user32.dll")] static extern IntPtr GetClipboardData(uint uFormat);
+        [DllImport("user32.dll")] static extern bool IsClipboardFormatAvailable(uint format);
+        [DllImport("kernel32.dll")] static extern IntPtr GlobalLock(IntPtr hMem);
+        [DllImport("kernel32.dll")] static extern bool GlobalUnlock(IntPtr hMem);
+        [DllImport("shell32.dll", CharSet = CharSet.Auto)] static extern uint DragQueryFile(IntPtr hDrop, uint iFile, StringBuilder lpszFile, int cch);
+
+        const int WH_KEYBOARD_LL = 13;
+        const int WM_KEYDOWN = 0x0100;
+        const uint CF_HDROP = 15;
+        const uint CF_PREFERREDDROPEFFECT = 11;
+        const int DROPEFFECT_MOVE = 2;
+
+        static HookProc proc;                       // keep the delegate alive
+        static IntPtr hook = IntPtr.Zero;
+        static ApplicationContext ctx;
+        static Form host;                           // hidden window: marshals work onto the UI thread
+        static NotifyIcon tray;
+        static System.Windows.Forms.Timer watch;
+        static MainForm win;                        // the progress window of the agent
+        static bool pasteBusy;
+
+        // ------------------------------------------------------------
+        //  run / stop
+        // ------------------------------------------------------------
+        public static int Run()
+        {
+            bool created;
+            Mutex m = new Mutex(true, "SuperCopy_Agent_v1", out created);
+            if (!created) { m.Close(); return 0; }     // already running
+            try
+            {
+                if (!Settings.DefaultCopy) return 0;  // switched off meanwhile
+
+                host = new HostForm();
+                host.ShowInTaskbar = false;
+                host.StartPosition = FormStartPosition.Manual;
+                host.Location = new Point(-32000, -32000);
+                host.Size = new Size(1, 1);
+                IntPtr hh = host.Handle;               // create the handle for BeginInvoke
+                if (hh == IntPtr.Zero) return 1;
+
+                ctx = new ApplicationContext();
+                ctx.MainForm = host;   // the hidden window keeps the message loop alive
+
+                tray = new NotifyIcon();
+                tray.Icon = IconMaker.MakeIcon();
+                tray.Text = "Super Copy";
+                tray.Visible = true;
+                ContextMenu menu = new ContextMenu();
+                menu.MenuItems.Add(L.T("Settings", "الإعدادات", "Paramètres"), new EventHandler(OpenSettings));
+                menu.MenuItems.Add("-");
+                menu.MenuItems.Add(L.T("Exit", "خروج", "Quitter"), new EventHandler(Stop));
+                tray.ContextMenu = menu;
+
+                watch = new System.Windows.Forms.Timer();
+                watch.Interval = 2000;
+                watch.Tick += new EventHandler(Watch);
+                watch.Start();
+
+                proc = new HookProc(Hook);
+                try { hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(null), 0); }
+                catch (Exception ex) { Msg.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); return 1; }
+                if (hook == IntPtr.Zero)
+                {
+                    Msg.Show(L.T("The keyboard hook could not be installed.",
+                                 "تعذّر تثبيت خطّاف لوحة المفاتيح.",
+                                 "Le hook clavier n'a pas pu être installé."),
+                             "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return 1;
+                }
+
+                Application.Run(ctx);
+                return 0;
+            }
+            finally
+            {
+                if (hook != IntPtr.Zero) { try { UnhookWindowsHookEx(hook); } catch { } hook = IntPtr.Zero; }
+                if (watch != null) { try { watch.Stop(); watch.Dispose(); } catch { } watch = null; }
+                if (tray != null) { try { tray.Visible = false; tray.Dispose(); } catch { } tray = null; }
+                if (host != null) { try { host.Dispose(); } catch { } host = null; }
+                try { m.ReleaseMutex(); } catch { }
+                m.Close();
+            }
+        }
+
+        // the helper follows the setting: it leaves when the option is switched off
+        static DateTime iniStamp = DateTime.MinValue;
+        static bool iniSeen = false;
+        static void Watch(object s, EventArgs e)
+        {
+            try
+            {
+                // only read the file when it really changed (this runs all day)
+                DateTime w;
+                try { w = File.GetLastWriteTimeUtc(Paths.Ini); } catch { w = DateTime.MinValue; }
+                if (iniSeen && w == iniStamp) return;
+                iniSeen = true;
+                iniStamp = w;
+                Settings.Load();
+                if (!Settings.DefaultCopy) Stop(s, e);
+            }
+            catch { }
+        }
+
+        static void Stop(object s, EventArgs e)
+        {
+            try { if (ctx != null) ctx.ExitThread(); } catch { }
+        }
+
+        static void OpenSettings(object s, EventArgs e)
+        {
+            try { Process.Start(new ProcessStartInfo(ExePath(), "/settings")); } catch { }
+        }
+
+        // ------------------------------------------------------------
+        //  enabling / disabling the helper
+        // ------------------------------------------------------------
+        public static void Apply()
+        {
+            if (Settings.DefaultCopy) Enable(); else Disable();
+        }
+
+        // the startup entry follows the option: the helper runs with Windows
+        // while Super Copy is the default copy
+        public static void Ensure()
+        {
+            if (Settings.DefaultCopy) { Autostart(true); Start(); }
+            else Autostart(false);
+        }
+
+        public static void Enable()
+        {
+            Autostart(true);
+            Start();
+        }
+
+        public static void Disable()
+        {
+            Autostart(false);
+        }
+
+        static void Autostart(bool on)
+        {
+            try
+            {
+                using (RegistryKey r = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+                {
+                    if (r == null) return;
+                    // only the installed copy may start with Windows, never the build folder
+                    string exe = Paths.ExeInstalled;
+                    if (on && File.Exists(exe)) r.SetValue("SuperCopy", "\"" + exe + "\" /agent");
+                    else r.DeleteValue("SuperCopy", false);
+                }
+            }
+            catch { }
+        }
+
+        public static void Start()
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(ExePath(), "/agent");
+                psi.UseShellExecute = false;
+                Process.Start(psi);
+            }
+            catch { }
+        }
+
+        static string ExePath()
+        {
+            try { if (File.Exists(Paths.ExeInstalled)) return Paths.ExeInstalled; } catch { }
+            return Application.ExecutablePath;
+        }
+
+        // ------------------------------------------------------------
+        //  keyboard hook
+        // ------------------------------------------------------------
+        static IntPtr Hook(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0 && (int)wParam == WM_KEYDOWN)
+                {
+                    int vk = Marshal.ReadInt32(lParam) & 0xFF;
+                    // the cheap test first: this callback runs for every key press of the whole system
+                    if (vk == 0x56 &&
+                        (GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
+                    {
+                        // only take over when the clipboard really holds files
+                        bool hasFiles = false;
+                        try { hasFiles = IsClipboardFormatAvailable(CF_HDROP); } catch { }
+                        if (hasFiles)
+                        {
+                            IntPtr fg = GetForegroundWindow();
+                            if (IsExplorer(fg) && !InEditBox(fg))
+                            {
+                                Post(fg);
+                                return new IntPtr(1);          // swallow: Explorer must not paste
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return CallNextHookEx(hook, nCode, wParam, lParam);
+        }
+
+        static void Post(IntPtr fg)
+        {
+            try { host.BeginInvoke(new MethodInvoker(delegate { OnKey(fg); })); }
+            catch { }
+        }
+
+        static void OnKey(IntPtr fg)
+        {
+            if (pasteBusy) return;
+            pasteBusy = true;
+            try { Paste(fg); }
+            catch (Exception ex)
+            {
+                // never let an exception kill the helper
+                try { Msg.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            }
+            finally { pasteBusy = false; }
+        }
+
+        static void Paste(IntPtr fg)
+        {
+            List<string> src = new List<string>();
+            bool move;
+            src = ClipFiles(out move);          // Explorer keeps the cut/copy flag on the clipboard
+            if (src.Count == 0)
+            {
+                Msg.Show(L.T("Nothing to paste: the clipboard holds no files.",
+                             "لا يوجد ما يتم لصقه: الحافظة لا تحتوي على ملفات.",
+                             "Rien à coller : le presse-papiers ne contient aucun fichier."),
+                         "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string dest = ExplorerDest(fg);
+            if (dest == null || !Directory.Exists(dest))
+            {
+                Msg.Show(L.T("Cannot find the destination folder.",
+                             "تعذّر العثور على مجلد الوجهة.",
+                             "Dossier de destination introuvable."),
+                         "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            RunJob(src, dest, move);
+        }
+
+        // a running Super Copy window takes the job, otherwise we do it here
+        static void RunJob(List<string> src, string dest, bool move)
+        {
+            bool created;
+            Mutex m = null;
+            try { m = new Mutex(true, "SuperCopy_MainInstance_v1", out created); }
+            catch (AbandonedMutexException) { created = true; }   // the previous owner died: we own it now
+            if (!created)
+            {
+                if (m != null) m.Close();
+                QueueStore.Enqueue(move, dest, src);   // the open window picks it up
+                return;
+            }
+            try
+            {
+                if (win == null || win.IsDisposed)
+                {
+                    win = new MainForm(null);
+                    win.FormClosed += delegate(object s, FormClosedEventArgs e) { win = null; };
+                    win.Show();
+                }
+                win.AddJob(new CopyJob(src, dest, move));
+                try { win.Activate(); } catch { }
+            }
+            catch (Exception ex)
+            {
+                try { Msg.Show(ex.Message, "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            }
+            finally
+            {
+                try { m.ReleaseMutex(); } catch { }
+                m.Close();
+            }
+        }
+
+        // ------------------------------------------------------------
+        //  clipboard (the file list Explorer put there)
+        // ------------------------------------------------------------
+        static List<string> ClipFiles(out bool move)
+        {
+            List<string> r = new List<string>();
+            move = false;
+            bool open = false;
+            for (int i = 0; i < 5 && !open; i++)
+            {
+                try { open = OpenClipboard(IntPtr.Zero); } catch { }
+                if (!open) Thread.Sleep(20);
+            }
+            if (!open) return r;
+            try
+            {
+                // the drop effect lives in global memory: it must be locked while it is read
+                IntPtr pref = GetClipboardData(CF_PREFERREDDROPEFFECT);
+                if (pref != IntPtr.Zero)
+                {
+                    IntPtr mem = GlobalLock(pref);
+                    try { if (mem != IntPtr.Zero) move = (Marshal.ReadInt32(mem) == DROPEFFECT_MOVE); }
+                    finally { if (mem != IntPtr.Zero) { try { GlobalUnlock(pref); } catch { } } }
+                }
+                IntPtr h = GetClipboardData(CF_HDROP);
+                if (h == IntPtr.Zero) return r;
+                uint n = DragQueryFile(h, 0xFFFFFFFF, null, 0);
+                for (uint i = 0; i < n; i++)
+                {
+                    // ask for the real length first: a fixed buffer would cut long paths
+                    int len = (int)DragQueryFile(h, i, null, 0);
+                    StringBuilder sb = new StringBuilder(len + 1);
+                    if (DragQueryFile(h, i, sb, sb.Capacity) > 0) r.Add(sb.ToString());
+                }
+            }
+            catch { }
+            finally { try { CloseClipboard(); } catch { } }
+            return r;
+        }
+
+        // ------------------------------------------------------------
+        //  Explorer: which window, which folder, which selection
+        // ------------------------------------------------------------
+        static object FindWindow(IntPtr fg)
+        {
+            try
+            {
+                Type t = Type.GetTypeFromProgID("Shell.Application");
+                if (t == null) return null;
+                object shell = Activator.CreateInstance(t);
+                object windows = Invoke(shell, "Windows");
+                if (windows == null) return null;
+                foreach (object w in (System.Collections.IEnumerable)windows)
+                {
+                    try { if (Convert.ToInt64(Get(w, "HWND")) == fg.ToInt64()) return w; } catch { }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        // one selected folder -> paste into it, otherwise the folder of the window
+        static string ExplorerDest(IntPtr fg)
+        {
+            try
+            {
+                object w = FindWindow(fg);
+                if (w != null)
+                {
+                    try
+                    {
+                        object doc = Get(w, "Document");
+                        object items = Get(doc, "SelectedItems");
+                        if (items != null && Convert.ToInt32(Get(items, "Count")) == 1)
+                        {
+                            string p = (string)Get(Invoke(items, "Item", 1), "Path");
+                            if (p != null && Directory.Exists(p)) return p;
+                        }
+                    }
+                    catch { }
+                    try
+                    {
+                        string path = UrlToPath((string)Get(w, "LocationURL"));
+                        if (path != null) return path;
+                    }
+                    catch { }
+                }
+                if (IsDesktop(ClassName(fg)))
+                    return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            }
+            catch { }
+            return null;
+        }
+
+        // late binding for the Shell.Application COM objects
+        // (GetProperty alone fails on SelectedItems: the binder only finds it
+        //  when the method flag is there as well)
+        static object Get(object o, string name)
+        {
+            return o.GetType().InvokeMember(name, BindingFlags.GetProperty | BindingFlags.InvokeMethod, null, o, null);
+        }
+
+        static object Invoke(object o, string name, params object[] args)
+        {
+            return o.GetType().InvokeMember(name, BindingFlags.InvokeMethod, null, o, args);
+        }
+
+        public static string UrlToPath(string url)
+        {
+            if (url == null) return null;
+            try
+            {
+                if (!url.StartsWith("file:")) return null;
+                string p = new Uri(url).LocalPath;
+                if (p.Length > 3 && p.EndsWith("\\")) p = p.Substring(0, p.Length - 1);
+                return p;
+            }
+            catch { return null; }
+        }
+
+        // ------------------------------------------------------------
+        //  window helpers
+        // ------------------------------------------------------------
+        public static bool IsExplorerClass(string cls)
+        {
+            return cls == "CabinetWClass" || IsDesktop(cls);
+        }
+
+        static bool IsDesktop(string cls)
+        {
+            return cls == "Progman" || cls == "WorkerW";
+        }
+
+        static bool IsExplorer(IntPtr h)
+        {
+            return IsExplorerClass(ClassName(h));
+        }
+
+        static string ClassName(IntPtr h)
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder(64);
+                GetClassName(h, sb, sb.Capacity);
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        // an open text box (address bar, rename) must keep its own Ctrl+V
+        static bool InEditBox(IntPtr fg)
+        {
+            try
+            {
+                uint tid = GetWindowThreadProcessId(fg, IntPtr.Zero);
+                GuiThreadInfo gti = new GuiThreadInfo();
+                gti.cbSize = Marshal.SizeOf(typeof(GuiThreadInfo));
+                if (!GetGUIThreadInfo(tid, ref gti)) return false;
+                if (gti.hwndFocus == IntPtr.Zero) return false;
+                string c = ClassName(gti.hwndFocus);
+                return c == "Edit" || c == "ComboBox" || c == "msctls_edit" ||
+                       c == "RICHEDIT" || c == "RICHEDIT50W";
+            }
+            catch { return false; }
         }
     }
 
@@ -875,6 +1403,7 @@ namespace SuperCopyApp
         public static readonly SolidBrush BrSel = new SolidBrush(Sel);
         public static readonly SolidBrush BrPanel = new SolidBrush(Panel);
         public static readonly SolidBrush BrGloss = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
+        public static readonly Pen PenBorder = new Pen(Border);
 
         public static readonly Font Cell = new Font("Tahoma", 8.25f);
         public static readonly Font Bold = new Font("Tahoma", 8.25f, FontStyle.Bold);
@@ -975,7 +1504,7 @@ namespace SuperCopyApp
                     g.FillRectangle(Theme.BrGloss, new Rectangle(fr.X, fr.Y, fr.Width, fr.Height / 2));
                 }
                 g.Restore(st);
-                using (Pen p = new Pen(Theme.Border)) g.DrawPath(p, path);
+                g.DrawPath(Theme.PenBorder, path);
             }
             g.SmoothingMode = old;
 
@@ -1018,7 +1547,20 @@ namespace SuperCopyApp
         public static Icon MakeIcon()
         {
             using (Bitmap b = MakeBitmap(32))
-                return Icon.FromHandle(b.GetHicon());
+            {
+                IntPtr h = b.GetHicon();
+                handles.Add(h);
+                return Icon.FromHandle(h);
+            }
+        }
+
+        // GetHicon gives out an unmanaged icon: it must be destroyed by hand
+        static List<IntPtr> handles = new List<IntPtr>();
+        [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr hIcon);
+        public static void FreeIcons()
+        {
+            for (int i = 0; i < handles.Count; i++) { try { DestroyIcon(handles[i]); } catch { } }
+            handles.Clear();
         }
     }
 
@@ -1059,6 +1601,8 @@ namespace SuperCopyApp
         readonly List<string> srcDirs = new List<string>();
         readonly object sync = new object();
         readonly object activeLock = new object();
+        readonly Dictionary<string, object> dstLocks = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        readonly object dstLockMap = new object();
 
         public long TotalBytes, DoneBytes;
         public int Errors, FilesDone;
@@ -1069,15 +1613,18 @@ namespace SuperCopyApp
         public int ActiveMs;
         long lastDone;
         int next, workers;
+        bool scanStarted;                // the scan thread is running (or already finished)
         long spaceLimit = -1, needBytes;   // destination free space (bytes); -1 = unknown
         bool noSpace;                      // scanner-only: true once the queued bytes exceed free space
 
         public CopyJob(List<string> sources, string dest, bool move)
         {
             Sources = sources; Dest = dest; Move = move;
-            string first = Path.GetFileName(sources[0].TrimEnd('\\', '/'));
-            if (first == null || first.Length == 0) first = sources[0];
-            string what = sources.Count == 1 ? "\"" + first + "\"" : sources.Count + " " + L.T("items", "عنصر", "éléments");
+            string first = "";
+            try { if (sources != null && sources.Count > 0 && sources[0] != null) first = Path.GetFileName(sources[0].TrimEnd('\\', '/')); }
+            catch { first = ""; }
+            if (first == null || first.Length == 0) first = (sources != null && sources.Count > 0 && sources[0] != null) ? sources[0] : (dest == null ? "" : dest);
+            string what = (sources == null || sources.Count == 1) ? "\"" + first + "\"" : sources.Count + " " + L.T("items", "عنصر", "éléments");
             Summary = what + " " + L.T("to", "إلى", "vers") + " " + dest;
         }
 
@@ -1163,10 +1710,22 @@ namespace SuperCopyApp
             Settings.AskPrompting = 0;
             int n = Settings.SmartConcurrency ? 1 : Math.Max(1, Math.Min(32, Settings.Concurrency));
             lock (sync) { workers += n; }
+            Prepare();     // scan may already be running (started when the job was queued)
+            for (int i = 0; i < n; i++) SpawnWorker();
+        }
+
+        // Scan in the background as soon as the job is queued, so the file list and the
+        // total size are known right away (the copy itself still waits for Start()).
+        public void Prepare()
+        {
+            lock (sync)
+            {
+                if (scanStarted) return;
+                scanStarted = true;
+            }
             Thread st = new Thread(new ThreadStart(ScanMain), 256 * 1024);
             st.IsBackground = true;
             st.Start();
-            for (int i = 0; i < n; i++) SpawnWorker();
         }
 
         void SpawnWorker()
@@ -1181,18 +1740,7 @@ namespace SuperCopyApp
         {
             if (!Started || Finished || Cancelled) return;
             bool spawn = false;
-            int targetTotal = Settings.Concurrency;
-            if (Settings.SmartConcurrency)
-            {
-                targetTotal = 0;
-                CopyItem[] actArr;
-                lock (activeLock) { actArr = active.ToArray(); }
-                foreach (CopyItem ci in actArr)
-                {
-                    if (ci != null) targetTotal = Math.Max(targetTotal, GetSmartCopyConcurrency(ci.Size));
-                }
-                if (targetTotal == 0) targetTotal = 1;
-            }
+            int targetTotal = ComputeTarget(null);
             lock (sync)
             {
                 if (workers > 0 && workers < targetTotal && next < items.Count)
@@ -1277,6 +1825,19 @@ namespace SuperCopyApp
             }
             return path;
         }
+        // the file that is set aside while the destination is written. The name is unique, so a
+        // user file called "<name>.sctmp" is never touched and two copies cannot collide.
+        static string BakPath(string dst)
+        {
+            return dst + ".sctmp." + Guid.NewGuid().ToString("N").Substring(0, 8);
+        }
+        // removes a destination this run created; if the file is locked (scanner) it is aged, so a
+        // later run with "overwrite if newer" can never keep the broken leftover
+        static void RemovePartial(string dst)
+        {
+            try { File.Delete(dst); }
+            catch { try { File.SetLastWriteTime(dst, new DateTime(1601, 1, 1)); } catch { } }
+        }
         static string UniqueDir(string parent, string name)
         {
             string c = Path.Combine(parent, name);
@@ -1291,21 +1852,227 @@ namespace SuperCopyApp
             try { return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(path))).AvailableFreeSpace; }
             catch { return -1; }
         }
-        static string HashFile(string path)
+        // XXH3-64 (xxHash3, default secret, seed 0). Portable scalar port of the reference
+        // implementation, so copy/move verification is fast enough to run on every file.
+        static class XXH3
         {
-            using (MD5 md5 = MD5.Create())
-            using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            const ulong P32_1 = 0x9E3779B1UL, P32_2 = 0x85EBCA77UL, P32_3 = 0xC2B2AE3DUL;
+            const ulong P64_1 = 0x9E3779B185EBCA87UL, P64_2 = 0xC2B2AE3D27D4EB4FUL;
+            const ulong P64_3 = 0x165667B19E3779F9UL, P64_4 = 0x85EBCA77C2B2AE63UL, P64_5 = 0x27D4EB2F165667C5UL;
+            const ulong MX1 = 0x165667919E3779F9UL, MX2 = 0x9FB21C651E98DF25UL;
+            const int SecretSize = 192, StripeLen = 64, ConsumeRate = 8, BlockLen = StripeLen * 16;
+
+            static readonly byte[] S = new byte[] {
+                0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
+                0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
+                0xcb, 0x79, 0xe6, 0x4e, 0xcc, 0xc0, 0xe5, 0x78, 0x82, 0x5a, 0xd0, 0x7d, 0xcc, 0xff, 0x72, 0x21,
+                0xb8, 0x08, 0x46, 0x74, 0xf7, 0x43, 0x24, 0x8e, 0xe0, 0x35, 0x90, 0xe6, 0x81, 0x3a, 0x26, 0x4c,
+                0x3c, 0x28, 0x52, 0xbb, 0x91, 0xc3, 0x00, 0xcb, 0x88, 0xd0, 0x65, 0x8b, 0x1b, 0x53, 0x2e, 0xa3,
+                0x71, 0x64, 0x48, 0x97, 0xa2, 0x0d, 0xf9, 0x4e, 0x38, 0x19, 0xef, 0x46, 0xa9, 0xde, 0xac, 0xd8,
+                0xa8, 0xfa, 0x76, 0x3f, 0xe3, 0x9c, 0x34, 0x3f, 0xf9, 0xdc, 0xbb, 0xc7, 0xc7, 0x0b, 0x4f, 0x1d,
+                0x8a, 0x51, 0xe0, 0x4b, 0xcd, 0xb4, 0x59, 0x31, 0xc8, 0x9f, 0x7e, 0xc9, 0xd9, 0x78, 0x73, 0x64,
+                0xea, 0xc5, 0xac, 0x83, 0x34, 0xd3, 0xeb, 0xc3, 0xc5, 0x81, 0xa0, 0xff, 0xfa, 0x13, 0x63, 0xeb,
+                0x17, 0x0d, 0xdd, 0x51, 0xb7, 0xf0, 0xda, 0x49, 0xd3, 0x16, 0x55, 0x26, 0x29, 0xd4, 0x68, 0x9e,
+                0x2b, 0x16, 0xbe, 0x58, 0x7d, 0x47, 0xa1, 0xfc, 0x8f, 0xf8, 0xb8, 0xd1, 0x7a, 0xd0, 0x31, 0xce,
+                0x45, 0xcb, 0x3a, 0x8f, 0x95, 0x16, 0x04, 0x28, 0xaf, 0xd7, 0xfb, 0xca, 0xbb, 0x4b, 0x40, 0x7e };
+
+            static readonly ulong[] InitAcc = new ulong[] { P32_3, P64_1, P64_2, P64_3, P64_4, P32_2, P64_5, P32_1 };
+
+            public static ulong HashFile(string path)
             {
-                byte[] h = md5.ComputeHash(fs);
-                StringBuilder sb = new StringBuilder(h.Length * 2);
-                for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
-                return sb.ToString();
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan))
+                {
+                    long len = fs.Length;
+                    if (len <= 240)
+                    {
+                        byte[] small = new byte[(int)len];
+                        ReadFull(fs, small, 0, small.Length);
+                        return HashShort(small, small.Length);
+                    }
+
+                    ulong[] acc = (ulong[])InitAcc.Clone();
+                    byte[] block = new byte[BlockLen];
+                    long blocks = (len - 1) / BlockLen;
+                    for (long b = 0; b < blocks; b++)
+                    {
+                        ReadFull(fs, block, 0, BlockLen);
+                        Accumulate(acc, block, 0, BlockLen / StripeLen);
+                        Scramble(acc, SecretSize - StripeLen);
+                    }
+                    int stripes = (int)(((len - 1) - blocks * BlockLen) / StripeLen);
+                    if (stripes > 0)
+                    {
+                        ReadFull(fs, block, 0, stripes * StripeLen);
+                        Accumulate(acc, block, 0, stripes);
+                    }
+                    byte[] last = new byte[StripeLen];
+                    fs.Seek(len - StripeLen, SeekOrigin.Begin);
+                    ReadFull(fs, last, 0, StripeLen);
+                    Accumulate512(acc, last, 0, SecretSize - StripeLen - 7);
+                    return Merge(acc, 11, (ulong)len * P64_1);
+                }
+            }
+
+            public static ulong HashShort(byte[] d, int len)
+            {
+                if (len <= 16) return Len0to16(d, len);
+                if (len <= 128) return Len17to128(d, len);
+                return Len129to240(d, len);
+            }
+
+            static ulong Len0to16(byte[] d, int len)
+            {
+                if (len > 8)
+                {
+                    ulong lo = Read64(d, 0) ^ (Read64(S, 24) ^ Read64(S, 32));
+                    ulong hi = Read64(d, len - 8) ^ (Read64(S, 40) ^ Read64(S, 48));
+                    return Avalanche((ulong)len + Swap64(lo) + hi + Mul128Fold64(lo, hi));
+                }
+                if (len >= 4)
+                {
+                    ulong input = Read32(d, len - 4) + ((ulong)Read32(d, 0) << 32);
+                    ulong keyed = input ^ (Read64(S, 8) ^ Read64(S, 16));
+                    return Rrmxmx(keyed, (ulong)len);
+                }
+                if (len > 0)
+                {
+                    uint combined = ((uint)d[0] << 16) | ((uint)d[len >> 1] << 24) | d[len - 1] | ((uint)len << 8);
+                    return XXH64Avalanche((ulong)combined ^ ((ulong)Read32(S, 0) ^ Read32(S, 4)));
+                }
+                return XXH64Avalanche(Read64(S, 56) ^ Read64(S, 64));
+            }
+
+            static ulong Mix16(byte[] d, int i, int s)
+            {
+                return Mul128Fold64(Read64(d, i) ^ Read64(S, s), Read64(d, i + 8) ^ Read64(S, s + 8));
+            }
+
+            static ulong Len17to128(byte[] d, int len)
+            {
+                ulong acc = (ulong)len * P64_1;
+                if (len > 32)
+                {
+                    if (len > 64)
+                    {
+                        if (len > 96)
+                        {
+                            acc += Mix16(d, 48, 96);
+                            acc += Mix16(d, len - 64, 112);
+                        }
+                        acc += Mix16(d, 32, 64);
+                        acc += Mix16(d, len - 48, 80);
+                    }
+                    acc += Mix16(d, 16, 32);
+                    acc += Mix16(d, len - 32, 48);
+                }
+                acc += Mix16(d, 0, 0);
+                acc += Mix16(d, len - 16, 16);
+                return Avalanche(acc);
+            }
+
+            static ulong Len129to240(byte[] d, int len)
+            {
+                ulong acc = (ulong)len * P64_1;
+                int rounds = len / 16;
+                for (int i = 0; i < 8; i++) acc += Mix16(d, 16 * i, 16 * i);
+                ulong accEnd = Mix16(d, len - 16, 136 - 17);
+                acc = Avalanche(acc);
+                for (int i = 8; i < rounds; i++) accEnd += Mix16(d, 16 * i, 16 * (i - 8) + 3);
+                return Avalanche(acc + accEnd);
+            }
+
+            static void Accumulate(ulong[] acc, byte[] input, int inputOff, int stripes)
+            {
+                for (int n = 0; n < stripes; n++)
+                    Accumulate512(acc, input, inputOff + n * StripeLen, n * ConsumeRate);
+            }
+
+            static void Accumulate512(ulong[] acc, byte[] input, int inputOff, int secretOff)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    ulong val = Read64(input, inputOff + i * 8);
+                    ulong key = val ^ Read64(S, secretOff + i * 8);
+                    acc[i ^ 1] += val;
+                    acc[i] += (ulong)(uint)key * (ulong)(uint)(key >> 32);
+                }
+            }
+
+            static void Scramble(ulong[] acc, int secretOff)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    ulong a = XorShift(acc[i], 47) ^ Read64(S, secretOff + i * 8);
+                    acc[i] = a * P32_1;
+                }
+            }
+
+            static ulong Merge(ulong[] acc, int secretOff, ulong start)
+            {
+                ulong r = start;
+                for (int i = 0; i < 4; i++)
+                    r += Mul128Fold64(acc[2 * i] ^ Read64(S, secretOff + 16 * i),
+                                      acc[2 * i + 1] ^ Read64(S, secretOff + 16 * i + 8));
+                return Avalanche(r);
+            }
+
+            static ulong Mul128Fold64(ulong a, ulong b)
+            {
+                ulong aLo = a & 0xFFFFFFFFUL, aHi = a >> 32, bLo = b & 0xFFFFFFFFUL, bHi = b >> 32;
+                ulong lo = aLo * bLo;
+                ulong mid = (lo >> 32) + (aLo * bHi & 0xFFFFFFFFUL) + (aHi * bLo & 0xFFFFFFFFUL);
+                ulong low = (lo & 0xFFFFFFFFUL) | (mid << 32);
+                ulong high = aHi * bHi + (aLo * bHi >> 32) + (aHi * bLo >> 32) + (mid >> 32);
+                return low ^ high;
+            }
+
+            static ulong Avalanche(ulong h) { h = XorShift(h, 37); h *= MX1; return XorShift(h, 32); }
+            static ulong Rrmxmx(ulong h, ulong len)
+            {
+                h ^= Rotl64(h, 49) ^ Rotl64(h, 24);
+                h *= MX2;
+                h ^= (h >> 35) + len;
+                h *= MX2;
+                return XorShift(h, 28);
+            }
+            static ulong XXH64Avalanche(ulong h)
+            {
+                h ^= h >> 33; h *= P64_2; h ^= h >> 29; h *= P64_3; h ^= h >> 32;
+                return h;
+            }
+            static ulong XorShift(ulong v, int s) { return v ^ (v >> s); }
+            static ulong Rotl64(ulong v, int r) { return (v << r) | (v >> (64 - r)); }
+            static ulong Swap64(ulong x)
+            {
+                return ((x & 0x00000000000000FFUL) << 56) | ((x & 0x000000000000FF00UL) << 40) |
+                       ((x & 0x0000000000FF0000UL) << 24) | ((x & 0x00000000FF000000UL) << 8) |
+                       ((x & 0x000000FF00000000UL) >> 8) | ((x & 0x0000FF0000000000UL) >> 24) |
+                       ((x & 0x00FF000000000000UL) >> 40) | ((x & 0xFF00000000000000UL) >> 56);
+            }
+            static ulong Read64(byte[] b, int i)
+            {
+                return (ulong)b[i] | ((ulong)b[i + 1] << 8) | ((ulong)b[i + 2] << 16) | ((ulong)b[i + 3] << 24) |
+                       ((ulong)b[i + 4] << 32) | ((ulong)b[i + 5] << 40) | ((ulong)b[i + 6] << 48) | ((ulong)b[i + 7] << 56);
+            }
+            static uint Read32(byte[] b, int i)
+            {
+                return (uint)b[i] | ((uint)b[i + 1] << 8) | ((uint)b[i + 2] << 16) | ((uint)b[i + 3] << 24);
+            }
+            static void ReadFull(Stream s, byte[] b, int off, int n)
+            {
+                while (n > 0)
+                {
+                    int r = s.Read(b, off, n);
+                    if (r <= 0) throw new EndOfStreamException();
+                    off += r; n -= r;
+                }
             }
         }
+
         // false on any read error: the safe direction (never delete the source on doubt)
         static bool SameHash(string a, string b)
         {
-            try { return HashFile(a) == HashFile(b); }
+            try { return XXH3.HashFile(a) == XXH3.HashFile(b); }
             catch { return false; }
         }
 
@@ -1410,6 +2177,36 @@ namespace SuperCopyApp
             }
             finally { try { File.Delete(f1); } catch { } try { File.Delete(f2); } catch { } }
 
+            // XXH3-64 known-answer vectors (reference xxhash.h scalar build)
+            byte[] abc = new byte[] { (byte)'a', (byte)'b', (byte)'c' };
+            if (XXH3.HashShort(new byte[0], 0) != 0x2D06800538D394C2UL) return 22;
+            if (XXH3.HashShort(abc, 3) != 0x78AF5F94892F3950UL) return 24;
+            byte[] v240 = new byte[240];
+            for (int i = 0; i < v240.Length; i++) v240[i] = (byte)(i * 7 + 3);
+            if (XXH3.HashShort(v240, 16) != 0xB8C859B0F030B585UL) return 26;
+            if (XXH3.HashShort(v240, 17) != 0x714A04408E79B80FUL) return 27;
+            if (XXH3.HashShort(v240, 128) != 0x67425A03650261BFUL) return 28;
+            if (XXH3.HashShort(v240, 240) != 0x64556DC6B462A6CFUL) return 25;
+
+            // long path (>240 bytes) and its 1024-byte block boundary, through HashFile
+            string hf = Path.Combine(Path.GetTempPath(), "sc_selftest_xxh3.bin");
+            byte[] v = new byte[3000];
+            for (int i = 0; i < v.Length; i++) v[i] = (byte)(i * 7 + 3);
+            int[] lens = new int[] { 241, 1024, 1025, 3000 };
+            ulong[] want = new ulong[] { 0x8BEADD3A8874FE17UL, 0x9B81661C641C72B1UL,
+                                         0x806C2072ED713576UL, 0xC89178BB873C6B3DUL };
+            try
+            {
+                for (int i = 0; i < lens.Length; i++)
+                {
+                    byte[] part = new byte[lens[i]];
+                    Array.Copy(v, part, part.Length);
+                    File.WriteAllBytes(hf, part);
+                    if (XXH3.HashFile(hf) != want[i]) return 23;
+                }
+            }
+            finally { try { File.Delete(hf); } catch { } }
+
             // big-first ordering: scan must leave items sorted by Size descending
             string sd = Path.Combine(Path.GetTempPath(), "sc_selftest_sort");
             try
@@ -1458,6 +2255,7 @@ namespace SuperCopyApp
                 {
                     Interlocked.Increment(ref asks);
                     Thread.Sleep(300);   // give the second worker time to reach the prompt
+                    Settings.AskSession = 0;   // the dialog keeps the answer for the session
                     return 0;            // overwrite
                 };
                 CopyJob aj = new CopyJob(new List<string>(new string[] { s1 }), askDir, false);
@@ -1480,8 +2278,46 @@ namespace SuperCopyApp
                 try { Directory.Delete(askDir, true); } catch { }
             }
 
-            // local version compare (offline update check: running exe vs Program Files copy)
-            if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
+            // safety net 1: a source that vanished after the scan is an error, not a silent skip
+            string goneDir = Path.Combine(Path.GetTempPath(), "sc_selftest_gone");
+            try
+            {
+                Directory.CreateDirectory(goneDir);
+                string src = Path.Combine(goneDir, "gone.txt"), dst = Path.Combine(goneDir, "dst.txt");
+                File.WriteAllText(src, "data");
+                CopyJob gj = new CopyJob(new List<string>(new string[] { src }), goneDir, false);
+                CopyItem gi = new CopyItem(); gi.Src = src; gi.Dst = dst; gi.Name = "gone.txt"; gi.Size = 4;
+                File.Delete(src);                 // the source disappears before the copy starts
+                gj.DoCopy(gi, new byte[4096]);
+                if (gi.State != 3) return 24;     // must be an error
+                if (File.Exists(dst)) return 24;  // and nothing may be written
+            }
+            finally { try { Directory.Delete(goneDir, true); } catch { } }
+
+            // safety net 2: a copy that fails must put the old destination back
+            string bakDir = Path.Combine(Path.GetTempPath(), "sc_selftest_bak");
+            try
+            {
+                Directory.CreateDirectory(bakDir);
+                string src = Path.Combine(bakDir, "s.txt"), dst = Path.Combine(bakDir, "d.txt");
+                File.WriteAllText(src, "new");
+                File.WriteAllText(dst, "old");
+                CopyJob bj = new CopyJob(new List<string>(new string[] { src }), bakDir, false);
+                CopyItem bi = new CopyItem(); bi.Src = src; bi.Dst = dst; bi.Name = "d.txt"; bi.Size = 3;
+                bool threw = false;
+                using (FileStream lk = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    try { bj.DoCopy(bi, new byte[4096]); }   // the locked source makes the copy fail
+                    catch (Exception) { threw = true; }
+                }
+                if (!threw) return 25;
+                if (!File.Exists(dst) || File.ReadAllText(dst) != "old") return 25;   // the old file must be back
+                string[] left = Directory.GetFiles(bakDir, "*.sctmp*");
+                if (left.Length != 0) return 25;                // no leftover backup
+            }
+            finally { try { Directory.Delete(bakDir, true); } catch { } }
+
+            // local version compare (offline update check: running exe vs Program Files copy)            if (Updates.FileVer(Application.ExecutablePath) < 1) return 21;
             if (Updates.FileVer(Path.Combine(Path.GetTempPath(), "sc_no_such_file.exe")) != 0) return 21;
 
             // flat verb layout (skipped until installed): SuperCopy/SuperCut/SuperToDevice
@@ -1513,6 +2349,35 @@ namespace SuperCopyApp
                     using (RegistryKey dr = Registry.CurrentUser.OpenSubKey(@"Software\Classes\Drive\shell\SuperCopy"))
                         if (dr != null) return 17;      // drive has no Super Copy entry
                 }
+            }
+
+            // default-copy helper: on by default, knows the Explorer windows and
+            // turns a shell URL into a folder path
+            if (!Settings.DefaultCopy) return 29;
+            if (HookAgent.UrlToPath("file:///C:/Temp/") != "C:\\Temp") return 29;
+            if (HookAgent.UrlToPath("http://example.com/x") != null) return 29;
+            if (!HookAgent.IsExplorerClass("CabinetWClass")) return 29;
+            if (HookAgent.IsExplorerClass("Notepad")) return 29;
+
+            // the installed copy must go away even while it runs: a file that is in
+            // use cannot be deleted, so it is renamed away instead - and it is never lost
+            string rf = Path.Combine(Path.GetTempPath(), "sc_selftest_rm.txt");
+            try
+            {
+                File.WriteAllText(rf, "x");
+                if (!Installer.RemoveFile(rf, 2) || File.Exists(rf)) return 30;
+                File.WriteAllText(rf, "x");
+                using (FileStream lk = new FileStream(rf, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    Installer.RemoveFile(rf, 2);        // in use: it cannot be deleted
+                    if (!File.Exists(rf)) return 30;    // and it must not be lost
+                }
+                if (!Installer.RemoveFile(rf, 2) || File.Exists(rf)) return 30;   // free again: it goes
+            }
+            finally
+            {
+                try { File.Delete(rf); } catch { }
+                try { File.Delete(rf + ".old"); } catch { }
             }
             return 0;
         }
@@ -1547,12 +2412,14 @@ namespace SuperCopyApp
 
         void ScanMain()
         {
-            spaceLimit = FreeSpace(Dest);
+            try { spaceLimit = FreeSpace(Dest); }
+            catch { spaceLimit = -1; }
             try
             {
                 foreach (string src in Sources)
                 {
                     if (Cancelled || noSpace) break;
+                    if (src == null) continue;
                     try
                     {
                         if (Directory.Exists(src))
@@ -1582,15 +2449,24 @@ namespace SuperCopyApp
                     catch (Exception ex) { AddFinished(src, 3, ex.Message); if (IsAccessDenied(ex)) AccessDenied = true; }
                 }
             }
+            catch (Exception ex)
+            {
+                // a crash here would kill the whole app: report it and let the workers continue
+                try { AddFinished("scan", 3, ex.Message); } catch { }
+            }
             finally
             {
                 // largest files first: display order == copy order. Gate is ScanDone (set last) so
                 // workers never consume the list mid-sort.
-                lock (sync)
+                try
                 {
-                    items.Sort(delegate(CopyItem a, CopyItem b) { return b.Size.CompareTo(a.Size); });
-                    for (int i = 0; i < items.Count; i++) items[i].Index = i;
+                    lock (sync)
+                    {
+                        items.Sort(delegate(CopyItem a, CopyItem b) { return b.Size.CompareTo(a.Size); });
+                        for (int i = 0; i < items.Count; i++) items[i].Index = i;
+                    }
                 }
+                catch { }
                 ScanDone = true;
             }
         }
@@ -1600,40 +2476,64 @@ namespace SuperCopyApp
         {
             byte[] buf = null;
             bool last = false;
-            while (true)
+            try
             {
-                CopyItem it = null;
-                bool wait = false;
-                lock (sync)
+                while (true)
                 {
-                    if (Cancelled) { workers--; last = (workers == 0); break; }
-                int target = Settings.Concurrency;
-                if (Settings.SmartConcurrency)
-                {
-                    CopyItem candidate = it;
-                    if (candidate == null && next < items.Count) candidate = items[next];
-                    target = GetTargetConcurrency(candidate);
-                }
-                if (workers > target && target >= 1) { workers--; return; }
-                if (ScanDone)
-                {
-                    if (next < items.Count) it = items[next++];
-                    else { workers--; last = (workers == 0); break; }
-                }
-                else wait = true;
-            }
-            if (wait) { Thread.Sleep(25); continue; }
+                    CopyItem it = null;
+                    bool wait = false;
+                    lock (sync)
+                    {
+                        if (Cancelled) { workers--; last = (workers == 0); break; }
+                        int target = ComputeTarget(null);
+                        if (workers > target && target >= 1) { workers--; return; }
+                        if (ScanDone)
+                        {
+                            if (next < items.Count) it = items[next++];
+                            else { workers--; last = (workers == 0); break; }
+                        }
+                        else wait = true;
+                    }
+                    if (wait) { Thread.Sleep(25); continue; }
 
-            // engine 2 does its I/O inside kernel32: no managed buffer at all,
-            // so workers cost ~zero extra RAM (32 threads x 256 KB = 8 MB of
-            // buffers we no longer allocate)
-            int want = Settings.BufferKB * 1024;
-            if (Settings.Engine == 2) buf = null;
-            else if (buf == null || buf.Length != want) buf = new byte[want];
-            ProcessItem(it, buf);
+                    int want = Settings.BufferKB * 1024;
+                    if (want < 4096) want = 4096;
+                    if (buf == null || buf.Length != want)
+                    {
+                        // a huge buffer can fail with OutOfMemory: the copy continues with a small one
+                        try { buf = new byte[want]; }
+                        catch (OutOfMemoryException) { buf = new byte[65536]; }
+                    }
+                    ProcessItem(it, buf);
+                }
+            }
+            catch (Exception ex)
+            {
+                // an unhandled exception here would end the whole app: keep the job alive
+                try
+                {
+                    LastError = ex.Message;
+                    lock (sync) { workers--; last = (workers == 0); }
+                }
+                catch { }
+            }
+            if (last) OnFinished();
         }
-        if (last) OnFinished();
-    }
+
+        // how many workers may run now: the same rule for the spawner and for the workers, so no
+        // worker is created and dropped again right away
+        int ComputeTarget(CopyItem pending)
+        {
+            if (!Settings.SmartConcurrency) return Math.Max(1, Math.Min(32, Settings.Concurrency));
+            CopyItem cand = pending;
+            lock (activeLock)
+            {
+                for (int i = 0; i < active.Count; i++)
+                    if (active[i] != null && (cand == null || active[i].Size > cand.Size)) cand = active[i];
+            }
+            if (cand == null) lock (sync) { if (next < items.Count) cand = items[next]; }
+            return GetTargetConcurrency(cand);
+        }
 
         void ProcessItem(CopyItem it, byte[] buf)
         {
@@ -1665,9 +2565,45 @@ namespace SuperCopyApp
             it.State = 4;
         }
 
+        // a failed item counts as handled: the progress must not stay below 100% for ever
+        void Fail(CopyItem it, string msg)
+        {
+            it.Error = msg;
+            LastError = it.Name + ": " + msg;
+            it.State = 3;
+            long rem = it.Size - Interlocked.Read(ref it.Done);
+            if (rem > 0) Interlocked.Add(ref DoneBytes, rem);
+            Interlocked.Increment(ref Errors);
+        }
+
         void DoCopy(CopyItem it, byte[] buf)
         {
+            // two items can end up at the same destination (same file name from two folders):
+            // they must never write it at the same time
+            lock (LockFor(it.Dst)) { DoCopyInner(it, buf); }
+        }
+
+        object LockFor(string dst)
+        {
+            string key = dst == null ? "" : dst;
+            lock (dstLockMap)
+            {
+                object o;
+                if (!dstLocks.TryGetValue(key, out o)) { o = new object(); dstLocks[key] = o; }
+                return o;
+            }
+        }
+
+        void DoCopyInner(CopyItem it, byte[] buf)
+        {
             string src = it.Src, dst = it.Dst;
+
+            if (!File.Exists(src))
+            {
+                // the source vanished between the scan and the copy: that is an error, not a skip
+                Fail(it, "Source no longer exists");
+                return;
+            }
 
             if (File.Exists(dst))
             {
@@ -1682,8 +2618,10 @@ namespace SuperCopyApp
                     if (c == 4)
                     {
                         int askChoice = Settings.AskSession;
+                        int gen = Settings.AskGen;
                         while (askChoice < 0)
                         {
+                            if (Settings.AskGen != gen) { Skip(it); return; }   // the user cancelled: skip this file too
                             if (Interlocked.CompareExchange(ref Settings.AskPrompting, 1, 0) == 0)
                             {
                                 try
@@ -1695,7 +2633,8 @@ namespace SuperCopyApp
                                     {
                                         ConflictAsker ask = ConflictPrompt.Ask;
                                         askChoice = ask == null ? 1 : ask(src, dst);
-                                        if (askChoice >= 0) Settings.AskSession = askChoice;
+                                        // the answer is kept for the whole session only when the user
+                                        // asked for it (the dialog sets AskSession itself)
                                     }
                                 }
                                 finally { Interlocked.Exchange(ref Settings.AskPrompting, 0); }
@@ -1720,10 +2659,14 @@ namespace SuperCopyApp
             {
                 if (File.Exists(dst))
                 {
-                    // shortcut: a kill between here and the delete leaves dst+".sctmp"; upgrade to a shutdown sweep if that matters
-                    string mb = dst + ".sctmp";
-                    try { File.Delete(mb); } catch { }
-                    File.Replace(src, dst, mb);          // atomic; both files stay intact if this throws
+                    string mb = BakPath(dst);
+                    try { File.Replace(src, dst, mb); }          // atomic; both files stay intact if this throws
+                    catch
+                    {
+                        // File.Replace needs NTFS: fall back to a rename that keeps the original safe
+                        try { File.Move(dst, mb); File.Move(src, dst); }
+                        catch { try { File.Move(mb, dst); } catch { } throw; }
+                    }
                     try { File.Delete(mb); } catch { }
                 }
                 else File.Move(src, dst);
@@ -1738,27 +2681,49 @@ namespace SuperCopyApp
             string bak = null;
             if (File.Exists(dst))
             {
-                bak = dst + ".sctmp";
-                try { File.Delete(bak); } catch { }
-                try { File.Move(dst, bak); } catch { bak = null; }   // degrade to plain overwrite
+                bak = BakPath(dst);
+                try { File.Move(dst, bak); }
+                catch (Exception ex)
+                {
+                    // the original cannot be set aside: never overwrite it in place
+                    Fail(it, "Cannot set the existing file aside: " + ex.Message);
+                    return;
+                }
             }
             bool ok;
-            try
-            {
-                if (Settings.Engine == 2) ok = FastCopy(src, dst, it);
-                else ok = Settings.Engine == 1 ? RoboCopy(src, dst, it, buf) : CopyData(src, dst, it, buf);
-            }
+            try { ok = Settings.Engine == 1 ? RoboCopy(src, dst, it, buf) : CopyData(src, dst, it, buf); }
             catch
             {
-                try { File.Delete(dst); } catch { }
+                RemovePartial(dst);
                 if (bak != null) { try { File.Move(bak, dst); } catch { } }
                 throw;
             }
             if (!ok)
             {
-                try { File.Delete(dst); } catch { }
+                RemovePartial(dst);
                 if (bak != null) { try { File.Move(bak, dst); } catch { } }
-                it.State = 5;
+                if (Cancelled) { it.State = 5; return; }
+                Fail(it, "The copy failed");   // robocopy error: the old file is back in place
+                return;
+            }
+            // the copy must be complete before the backup or the source is dropped - the length
+            // is checked even when the hash verification is off
+            long dlen = -1, slen = -1;
+            try { dlen = new FileInfo(dst).Length; slen = new FileInfo(src).Length; } catch { }
+            if (slen >= 0 && dlen != slen)
+            {
+                RemovePartial(dst);
+                if (bak != null) { try { File.Move(bak, dst); } catch { } }
+                Fail(it, "Incomplete copy - source kept");
+                return;
+            }
+            // hash both files before deleting the backup or the source: a bad transfer can
+            // never destroy the only good copy, and copies are verified too, not just moves
+            if (Settings.Verify && !SameHash(dst, src))
+            {
+                RemovePartial(dst);
+                if (bak != null) { try { File.Move(bak, dst); } catch { } }
+                Fail(it, "XXH3 checksum mismatch - source kept");
                 return;
             }
             if (bak != null) { try { File.Delete(bak); } catch { } }
@@ -1776,22 +2741,10 @@ namespace SuperCopyApp
 
             if (Move)
             {
-                // shortcut: re-reads both files to compare; switch to hash-as-you-copy if large-file move speed matters
-                if (!SameHash(dst, src))
-                {
-                    it.Error = "Checksum mismatch - source kept";
-                    LastError = it.Name + ": " + it.Error;
-                    it.State = 3;
-                    Interlocked.Increment(ref Errors);
-                    return;
-                }
                 try { File.SetAttributes(src, FileAttributes.Normal); File.Delete(src); }
                 catch (Exception ex)
                 {
-                    it.Error = "Copied, source not deleted: " + ex.Message;
-                    LastError = it.Name + ": " + it.Error;
-                    it.State = 3;
-                    Interlocked.Increment(ref Errors);
+                    Fail(it, "Copied, source not deleted: " + ex.Message);
                     if (IsAccessDenied(ex)) AccessDenied = true;
                     return;
                 }
@@ -1802,7 +2755,6 @@ namespace SuperCopyApp
         // returns false when cancelled
         bool CopyData(string src, string dst, CopyItem it, byte[] buf)
         {
-            if (buf == null) buf = ThreadBuf();
             FileStream fi = null, fo = null;
             bool ok = false;
             try
@@ -1826,7 +2778,7 @@ namespace SuperCopyApp
                 if (fo != null)
                 {
                     try { fo.Close(); } catch { }
-                    try { File.Delete(dst); } catch { }   // remove the partial file we created
+                    RemovePartial(dst);   // remove the partial file we created
                 }
                 throw;
             }
@@ -1858,73 +2810,16 @@ namespace SuperCopyApp
                     if (p.ExitCode >= 8) return false;              // 0..7 = success
                 }
                 FileInfo fi = new FileInfo(dst);
-                if (!fi.Exists || fi.Length != it.Size) return false;
+                if (!fi.Exists) return false;
+                long cur = -1;
+                try { cur = new FileInfo(src).Length; } catch { }   // the file may have changed since the scan
+                if (cur >= 0 && fi.Length != cur) return false;
+                if (cur < 0 && fi.Length != it.Size) return false;
                 Interlocked.Add(ref it.Done, it.Size);
                 Interlocked.Add(ref DoneBytes, it.Size);
                 return true;
             }
             catch { return CopyData(src, dst, it, buf); }
-        }
-
-        // engine 2: kernel32 CopyFileEx. Falls back to plain buffered
-        // CopyFileEx on volumes that reject NO_BUFFERING (some network
-        // shares / odd filesystems return ERROR_INVALID_PARAMETER).
-        // Returns false only when cancelled; throws IOException on hard
-        // errors, matching CopyData's contract so DoCopy's
-        // restore-on-failure path keeps working unchanged.
-        bool FastCopy(string src, string dst, CopyItem it)
-        {
-            FastCopyCtx c = new FastCopyCtx();
-            c.Item = it;
-            c.Job = this;
-            GCHandle pin = GCHandle.Alloc(c);
-            int flags = FastCopyNative.COPY_FILE_NO_BUFFERING;
-            try
-            {
-                for (int attempt = 1; ; attempt++)
-                {
-                    int cancel = 0;
-                    bool ok = FastCopyNative.CopyFileEx(src, dst, FastCopyNative.Callback,
-                        GCHandle.ToIntPtr(pin), ref cancel, flags);
-                    if (ok)
-                    {
-                        long delta = it.Size - c.Reported;   // flush the unreported tail
-                        if (delta > 0)
-                        {
-                            Interlocked.Add(ref it.Done, delta);
-                            Interlocked.Add(ref DoneBytes, delta);
-                        }
-                        return true;
-                    }
-                    int err = Marshal.GetLastWin32Error();
-                    if (c.CancelSeen || cancel != 0 || Cancelled) return false;
-
-                    if ((flags & FastCopyNative.COPY_FILE_NO_BUFFERING) != 0 && err == 87)
-                    {
-                        flags &= ~FastCopyNative.COPY_FILE_NO_BUFFERING;  // retry buffered
-                        continue;
-                    }
-                    if (attempt < 4 && IsTransientCopyError(err)) { Thread.Sleep(350 * attempt); continue; }
-                    throw new IOException(new Win32Exception(err).Message);
-                }
-            }
-            finally { pin.Free(); }
-        }
-
-        // sharing violations / locks / short network hiccups deserve a retry
-        static bool IsTransientCopyError(int err)
-        {
-            return err == 32 || err == 33 || err == 53 || err == 54 || err == 55 || err == 59 || err == 64;
-        }
-
-        // safety net if the engine is switched mid-job: one lazily-grown
-        // buffer per worker thread instead of one per file
-        [ThreadStatic] static byte[] s_threadBuf;
-        static byte[] ThreadBuf()
-        {
-            int want = Math.Max(65536, Settings.BufferKB * 1024);
-            if (s_threadBuf == null || s_threadBuf.Length != want) s_threadBuf = new byte[want];
-            return s_threadBuf;
         }
 
         void OnFinished()
@@ -1974,7 +2869,7 @@ namespace SuperCopyApp
     class HeaderPanel : Panel
     {
         public string Title = "", Elapsed = "0:00", BarText = "", TxtL = "", TxtM = "", TxtR = "";
-        public double Frac;
+        public double Frac;                 // all files of the job
         public bool Marquee;
         public int Tick;
         public Color ColA = Theme.Cyan, ColB = Theme.Violet;
@@ -2057,6 +2952,7 @@ namespace SuperCopyApp
     class TitleBar : Panel
     {
         public string Title = "", Sub = "";
+        static Bitmap iconBmp;          // built once: a new bitmap on every paint leaks GDI handles
 
         public TitleBar()
         {
@@ -2070,7 +2966,8 @@ namespace SuperCopyApp
             if (Width < 20 || Height < 10) return;
             using (LinearGradientBrush lb = new LinearGradientBrush(ClientRectangle, Theme.Cyan, Theme.Violet, 0f))
                 g.FillRectangle(lb, ClientRectangle);
-            g.DrawImage(IconMaker.MakeBitmap(32), L.Rtl ? Width - 46 : 14, (Height - 32) / 2);
+            if (iconBmp == null) iconBmp = IconMaker.MakeBitmap(32);
+            g.DrawImage(iconBmp, L.Rtl ? Width - 46 : 14, (Height - 32) / 2);
             Rectangle trTitle = L.Rtl ? new Rectangle(14, 8, Width - 60, 22) : new Rectangle(56, 8, Width - 60, 22);
             Rectangle trSub = L.Rtl ? new Rectangle(14, 30, Width - 60, 18) : new Rectangle(56, 30, Width - 60, 18);
             TextRenderer.DrawText(g, Title, Theme.Title, trTitle, Color.White,
@@ -2131,6 +3028,14 @@ namespace SuperCopyApp
         bool exiting, doneHandled, settingSel, compact;
         bool adminPrompted, retryEscalated;   // access-denied -> "retry as admin?" asked / elevating
         int lastTick, tickN, closeAt = -1;
+        int paintedCount = -1;                // list state at the last repaint (repaint only on change)
+        bool paintedBusy, headerDirty = true;
+        int paintedJobs = -1;                 // job count at the last job-box repaint
+        int paintedErrs = -1;                 // error count at the last list repaint
+        int lastActiveRow = -1;               // row of the active file (scroll only when it moves)
+        bool closingAfter;                    // the window closes itself when the workers are done
+        int closingAt;
+        volatile string promptError;          // set when the conflict prompt could not be shown
         Size savedSize;
 
         static TextFormatFlags CellFlags
@@ -2229,8 +3134,8 @@ namespace SuperCopyApp
 
             // ----- header -----
             header = new HeaderPanel();
-            header.Dock = DockStyle.Top;
-            header.Height = 104;
+        header.Dock = DockStyle.Top;
+        header.Height = 104;
             btnHide = UI.MakeButton(L.T("Hide", "إخفاء", "Masquer"), 70, Color.FromArgb(70, 90, 170));
             btnHide.Height = 26;
             header.HideButton = btnHide;
@@ -2367,7 +3272,12 @@ namespace SuperCopyApp
                 if (!IsHandleCreated) return 1;
                 return (int)Invoke(new ConflictAsker(AskConflictNow), new object[] { src, dst });
             }
-            catch { return 1; }
+            catch (Exception ex)
+            {
+                // the prompt could not be shown: report it, do not silently drop the file
+                promptError = ex.Message;
+                return 1;      // skip: never overwrite when the question could not be asked
+            }
         }
 
         int AskConflictNow(string src, string dst)
@@ -2375,7 +3285,16 @@ namespace SuperCopyApp
             if (Settings.AskSession >= 0) return Settings.AskSession;   // another worker answered already
             using (ConflictDialog d = new ConflictDialog(dst))
             {
-                if (d.ShowDialog(this) != DialogResult.OK) { Settings.AskSession = -1; return -1; }   // cancelled -> skip this file
+                d.TopMost = true;      // the prompt must not hide behind the Explorer window
+                timer.Stop();          // no repaint behind the modal prompt
+                DialogResult res = d.ShowDialog(this);
+                timer.Start();
+                if (res != DialogResult.OK)
+                {
+                    Settings.AskSession = -1;
+                    Interlocked.Increment(ref Settings.AskGen);   // the waiting workers skip their file too
+                    return -1;   // cancelled -> skip this file
+                }
                 if (d.SaveForSession) Settings.AskSession = d.Choice;
                 else Settings.AskSession = -1;
                 return d.Choice;
@@ -2383,9 +3302,10 @@ namespace SuperCopyApp
         }
 
         // ------------------------------------------------------------
-        void AddJob(CopyJob j)
+        public void AddJob(CopyJob j)
         {
             jobs.Add(j);
+            j.Prepare();      // scan now: the files and the total size show up in the list at once
             lastDest = j.Dest;
             jobBox.Items.Add(j);
             doneHandled = false;
@@ -2394,12 +3314,57 @@ namespace SuperCopyApp
             jobBox.Visible = multi && !compact;
             jobBox.Height = Math.Min(jobs.Count, 4) * 26 + 2;
             if (cur == null) SetCur(j);
+            lv.VirtualListSize = ListCount();
+            ShowOnTop();      // the user has to see the copy that just started
+        }
+
+        // the main list holds the files of every job in the queue, one after the other
+        int ListCount()
+        {
+            int n = 0;
+            for (int i = 0; i < jobs.Count; i++) n += jobs[i].ItemCount;
+            return n;
+        }
+
+        // row -> (job, item); rows are the items of all jobs, in queue order
+        CopyItem ListItem(int row, out CopyJob job)
+        {
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                int c = jobs[i].ItemCount;
+                if (row < c) { job = jobs[i]; return job.GetItem(row); }
+                row -= c;
+            }
+            job = null;
+            return null;
+        }
+
+        // row of the first item of a job (for the "keep the active file visible" logic)
+        int ListRowOf(CopyJob j)
+        {
+            int n = 0;
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                if (jobs[i] == j) return n;
+                n += jobs[i].ItemCount;
+            }
+            return -1;
+        }
+
+        // progress over the whole queue (all jobs, running and waiting)
+        double QueueFraction()
+        {
+            long total = 0, done = 0;
+            for (int i = 0; i < jobs.Count; i++) { total += jobs[i].Total; done += jobs[i].DoneNow; }
+            if (total <= 0) return 0;
+            double f = (double)done / total;
+            return f > 1 ? 1 : (f < 0 ? 0 : f);
         }
 
         void SetCur(CopyJob j)
         {
             cur = j;
-            lv.VirtualListSize = j.ItemCount;
+            lv.VirtualListSize = ListCount();
             lv.Invalidate();
             int idx = jobs.IndexOf(j);
             if (idx >= 0 && jobBox.SelectedIndex != idx)
@@ -2420,16 +3385,20 @@ namespace SuperCopyApp
             Array.Sort(fs);
             for (int k = 0; k < fs.Length; k++)
             {
+                // claim the file first: two windows must never run the same job
+                string mine = fs[k] + ".claimed";
+                try { File.Move(fs[k], mine); }
+                catch { continue; }
                 try
                 {
-                    string[] ln = File.ReadAllLines(fs[k], Encoding.UTF8);
+                    string[] ln = File.ReadAllLines(mine, Encoding.UTF8);
                     if (ln.Length >= 3)
                     {
                         List<string> src = new List<string>();
                         for (int i = 2; i < ln.Length; i++) if (ln[i].Length > 0) src.Add(ln[i]);
                         if (src.Count > 0) AddJob(new CopyJob(src, ln[1], ln[0] == "cut"));
                     }
-                    File.Delete(fs[k]);   // only after the job is enqueued; a throw keeps the file for retry
+                    File.Delete(mine);   // only after the job is enqueued; a throw keeps the file for retry
                 }
                 catch { }
             }
@@ -2457,7 +3426,14 @@ namespace SuperCopyApp
             lastTick = now;
             if (dt < 1) dt = 1;
 
-            if (tickN % 2 == 0) PollQueue();
+            if (tickN % 4 == 0) PollQueue();      // every second: hand-over jobs from other instances
+            if (promptError != null)
+            {
+                string e2 = promptError;
+                promptError = null;
+                Msg.Show(this, L.T("The conflict prompt could not be shown, the file was skipped:\n", "تعذّر عرض نافذة التعارض، وتم تخطي الملف:\n", "La demande de conflit n'a pas pu s'afficher, le fichier a été ignoré :\n") + e2,
+                    "Super Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             if (running != null && !running.Finished)
             {
                 running.EnsureWorkers();
@@ -2467,36 +3443,62 @@ namespace SuperCopyApp
 
             // caption / tray tooltip stay current even when hidden
             string cap = "Super Copy";
-            if (cur != null && cur.Started && !cur.Finished) cap = ((int)(cur.Fraction * 100)) + "% - Super Copy";
+            if (cur != null && cur.Started && !cur.Finished) cap = ((int)(QueueFraction() * 100)) + "% - Super Copy";
             if (Text != cap) Text = cap;
             if (tray.Visible && tray.Text != cap) tray.Text = cap;
 
             if (Visible && WindowState != FormWindowState.Minimized && cur != null)
             {
-                int cnt = cur.ItemCount;
+                int cnt = ListCount();
                 if (lv.VirtualListSize != cnt) lv.VirtualListSize = cnt;
-                if (cur == running && !cur.Finished && cnt > 0 && lv.Visible && !MouseInList())
+                if (cur == running && !cur.Finished && cnt > 0 && lv.Visible)
                 {
                     int idx = cur.FirstActiveIndex();
                     if (idx >= 0)
                     {
-                        try
+                        int row = ListRowOf(cur);
+                        if (row >= 0) idx += row;
+                        if (idx != lastActiveRow && !MouseInList())   // scroll only when the active file changes
                         {
-                            lv.EnsureVisible(Math.Min(cnt - 1, idx + 8));
-                            lv.EnsureVisible(idx);
+                            lastActiveRow = idx;
+                            try
+                            {
+                                lv.EnsureVisible(Math.Min(cnt - 1, idx + 8));
+                                lv.EnsureVisible(idx);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
                 }
                 UpdateHeader();
                 UpdateButtons();
                 header.Tick = tickN;
-                header.Invalidate();
-                lv.Invalidate();
-                if (jobBox.Visible) jobBox.Invalidate();
+                if (headerDirty || header.Marquee) header.Invalidate();
+                // the rows only change while a job runs, when the count changes or when a job ends
+                bool busy = running != null && !running.Finished && !running.Paused;
+                int errs = 0;
+                for (int i = 0; i < jobs.Count; i++) errs += jobs[i].Errors;
+                if (busy || cnt != paintedCount || busy != paintedBusy || errs != paintedErrs)
+                {
+                    lv.Invalidate();
+                    paintedCount = cnt;
+                    paintedBusy = busy;
+                    paintedErrs = errs;
+                }
+                if (jobBox.Visible && (busy || jobBox.Items.Count != paintedJobs))
+                {
+                    jobBox.Invalidate();
+                    paintedJobs = jobBox.Items.Count;
+                }
             }
 
             if (closeAt >= 0 && tickN >= closeAt) { exiting = true; Close(); }
+            if (closingAfter && (!AnyRunning() || Environment.TickCount - closingAt > 10000))
+            {
+                closingAfter = false;      // the workers are done (or too slow): close now
+                exiting = true;
+                Close();
+            }
         }
 
         void Advance()
@@ -2508,6 +3510,7 @@ namespace SuperCopyApp
                     !adminPrompted && !retryEscalated && !Admin.IsElevated)
                 {
                     adminPrompted = true;
+                    CopyJob failed = running;      // the modal dialog re-enters this method: keep the job
                     if (!Visible) ShowFromTray();
                     if (Msg.Show(this,
                         L.T("Some files could not be copied: access is denied.\n\n" +
@@ -2524,7 +3527,7 @@ namespace SuperCopyApp
                         // stop polling first: the UAC prompt pumps messages and the old
                         // instance would otherwise eat its own queue file
                         retryEscalated = true;
-                        if (QueueFailed(running) && Admin.Relaunch())
+                        if (QueueFailed(failed) && Admin.Relaunch())
                         {
                             exiting = true;
                             Close();
@@ -2574,6 +3577,7 @@ namespace SuperCopyApp
             int errs = 0;
             bool canc = false;
             for (int i = 0; i < jobs.Count; i++) { errs += jobs[i].Errors; canc = canc || jobs[i].Cancelled; }
+            try { TopMost = false; } catch { }      // back to the normal z-order
             if (errs > 0 || canc)
             {
                 if (!Visible) ShowFromTray();     // let the user see what happened
@@ -2590,58 +3594,83 @@ namespace SuperCopyApp
 
         void UpdateHeader()
         {
-            CopyJob j = cur;
             HeaderPanel h = header;
-            long total = j.Total, done = j.DoneNow;
-            int files = j.ItemCount;
-            string errs = j.Errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + j.Errors : "";
-            string filesTxt = j.FilesDone + " / " + files + (j.ScanDone ? "" : "+") + " " +
+            // remember what is on screen: the header is repainted only when it really changes
+            string oTitle = h.Title, oElapsed = h.Elapsed, oBar = h.BarText;
+            string oL = h.TxtL, oM = h.TxtM, oR = h.TxtR;
+            double oFrac = h.Frac; Color oA = h.ColA, oB = h.ColB; bool oMar = h.Marquee;
+            CopyJob run = null, queued = null, last = null;
+            long total = 0, done = 0, active = 0;
+            int files = 0, filesDone = 0, errors = 0;
+            bool scanning = false, allFinished = true;
+
+            // the numbers cover the whole queue, the title describes the job that matters now
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                CopyJob j = jobs[i];
+                total += j.Total; done += j.DoneNow; active += j.ActiveMs;
+                files += j.ItemCount; filesDone += j.FilesDone; errors += j.Errors;
+                if (!j.ScanDone) scanning = true;
+                if (j.Started && !j.Finished) { run = j; allFinished = false; }
+                else if (!j.Started) { allFinished = false; if (queued == null) queued = j; }
+                last = j;
+            }
+            CopyJob j2 = run != null ? run : (queued != null ? queued : last);
+            if (j2 == null) return;
+
+            long speed = run != null ? (long)run.Speed : 0;
+            double eta = speed > 0 ? (double)(total - done) / speed : -1;
+            double frac = total > 0 ? QueueFraction() : (allFinished ? 1.0 : 0.0);
+            if (frac > 1) frac = 1; if (frac < 0) frac = 0;
+
+            string errs = errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + errors : "";
+            string filesTxt = filesDone + " / " + files + (scanning ? "+" : "") + " " +
                               L.T("files", "ملف", "fichiers") + "    " +
-                              Fmt.Size(done) + " / " + Fmt.Size(total) + (j.ScanDone ? "" : "+") + errs;
-            string verb = j.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
-            h.Elapsed = Fmt.Time(j.ActiveMs / 1000.0);
+                              Fmt.Size(done) + " / " + Fmt.Size(total) + (scanning ? "+" : "") + errs;
+            string verb = j2.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
+            h.Elapsed = Fmt.Time(active / 1000.0);
             h.Marquee = false;
-            h.Frac = j.Fraction;
+            h.Frac = frac;
             h.TxtR = filesTxt;
 
-            if (!j.Started)
+            if (!j2.Started)
             {
-                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j.Summary;
+                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j2.Summary;
                 h.BarText = L.T("Waiting...", "بالانتظار...", "En attente...");
                 h.Frac = 0;
                 h.ColA = Color.FromArgb(70, 80, 120); h.ColB = Color.FromArgb(100, 110, 150);
                 h.TxtL = L.T("Speed: -", "السرعة: -", "Vitesse : -");
                 h.TxtM = L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -");
             }
-            else if (j.Finished)
+            else if (j2.Finished)
             {
-                if (j.Cancelled)
+                if (j2.Cancelled)
                 {
-                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j.Summary;
+                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j2.Summary;
                     h.ColA = Color.FromArgb(210, 120, 30); h.ColB = Color.FromArgb(255, 190, 90);
                 }
-                else if (j.Errors > 0)
+                else if (errors > 0)
                 {
-                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j.Summary;
+                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j2.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(200, 40, 60); h.ColB = Color.FromArgb(255, 120, 100);
                 }
                 else
                 {
-                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j.Summary;
+                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j2.Summary;
                     h.Frac = 1.0;
                     h.ColA = Color.FromArgb(30, 170, 100); h.ColB = Color.FromArgb(120, 240, 160);
                 }
                 h.BarText = ((int)Math.Round(h.Frac * 100)) + "%";
-                double avg = j.ActiveMs > 0 ? done * 1000.0 / j.ActiveMs : 0;
+                double avg = active > 0 ? done * 1000.0 / active : 0;
                 h.TxtL = L.T("Average speed: ", "متوسط السرعة: ", "Vitesse moyenne : ") + Fmt.Size((long)avg) + "/s";
-                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(j.ActiveMs / 1000.0);
+                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(active / 1000.0);
             }
             else
             {
-                bool paused = j.Paused;
-                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j.Summary;
-                if (!j.ScanDone)
+                bool paused = j2.Paused;
+                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j2.Summary;
+                if (scanning)
                 {
                     h.Marquee = true;
                     h.BarText = L.T("Scanning folders...  ", "جارٍ فحص المجلدات...  ", "Analyse des dossiers...  ") +
@@ -2651,22 +3680,30 @@ namespace SuperCopyApp
                 if (paused) { h.ColA = Theme.Orange; h.ColB = Color.FromArgb(255, 210, 110); }
                 else { h.ColA = Theme.Cyan; h.ColB = Theme.Violet; }
                 h.TxtL = paused ? L.T("Speed: paused", "السرعة: متوقفة", "Vitesse : en pause")
-                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size((long)j.Speed) + "/s";
+                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size(speed) + "/s";
                 h.TxtM = paused ? L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -")
-                                : (j.ScanDone ? L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(j.Eta)
-                                              : L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul..."));
+                                : (scanning ? L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul...")
+                                            : L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(eta));
             }
-            lblErr.Text = j.LastError == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + j.LastError;
+            string lastErr = null;
+            for (int i = 0; i < jobs.Count; i++) if (jobs[i].LastError != null) lastErr = jobs[i].LastError;
+            lblErr.Text = lastErr == null ? "" : L.T("Last error: ", "آخر خطأ: ", "Dernière erreur : ") + lastErr;
+
+            headerDirty = oTitle != h.Title || oElapsed != h.Elapsed || oBar != h.BarText ||
+                          oL != h.TxtL || oM != h.TxtM || oR != h.TxtR ||
+                          oFrac != h.Frac || oA != h.ColA || oB != h.ColB || oMar != h.Marquee;
         }
 
         void UpdateButtons()
         {
-            bool active = cur != null && !cur.Finished;
+            CopyJob act = (running != null && !running.Finished) ? running : cur;
+            bool active = act != null && !act.Finished;
             btnPause.Enabled = active;
             btnCancel.Enabled = active;
-            string t = (cur != null && cur.Paused) ? L.T("Resume", "متابعة", "Reprendre") : L.T("Pause", "إيقاف", "Pause");
+            string t = (act != null && act.Paused) ? L.T("Resume", "متابعة", "Reprendre") : L.T("Pause", "إيقاف", "Pause");
             if (btnPause.Text != t) btnPause.Text = t;
-            bool showErr = cur != null && cur.Errors > 0;
+            bool showErr = false;
+            for (int i = 0; i < jobs.Count; i++) if (jobs[i].Errors > 0) { showErr = true; break; }
             if (btnErrReport.Visible != showErr)
             {
                 btnErrReport.Visible = showErr;
@@ -2679,19 +3716,27 @@ namespace SuperCopyApp
         // ------------------------------------------------------------
         void btnPause_Click(object s, EventArgs e)
         {
-            if (cur != null && !cur.Finished) cur.Paused = !cur.Paused;
+            // the job that is really copying, not the one shown in the job strip
+            CopyJob j = (running != null && !running.Finished) ? running : cur;
+            if (j != null && !j.Finished) j.Paused = !j.Paused;
         }
 
         void btnCancel_Click(object s, EventArgs e)
         {
-            if (cur != null && !cur.Finished) cur.Cancel();
+            CopyJob j = (running != null && !running.Finished) ? running : cur;
+            if (j != null && !j.Finished) j.Cancel();
         }
 
         // Error report popup: full per-file error text with a copy-to-clipboard button.
         void btnErrReport_Click(object s, EventArgs e)
         {
             if (cur == null) return;
-            string text = cur.ErrorReport();
+            string text = "";
+            for (int i = 0; i < jobs.Count; i++)     // every job in the queue
+            {
+                string t = jobs[i].ErrorReport();
+                if (t.Length > 0) text += (text.Length > 0 ? "\r\n" : "") + t;
+            }
             if (text.Length == 0) text = L.T("No errors.", "لا توجد أخطاء.", "Aucune erreur.");
 
             Form f = new Form();
@@ -2742,7 +3787,9 @@ namespace SuperCopyApp
         void btnSettings_Click(object s, EventArgs e)
         {
             int before = L.Code;
+            timer.Stop();                 // no repaint behind the modal window
             using (SettingsForm f = new SettingsForm()) f.ShowDialog(this);
+            timer.Start();
             chkClose.Checked = Settings.AutoClose;
             if (L.Code != before) ApplyLanguage();
         }
@@ -2790,6 +3837,21 @@ namespace SuperCopyApp
         {
             tray.Visible = true;
             Hide();
+        }
+
+        // the copy window must be seen: it stays above the Explorer window
+        // while the job runs and comes back to the normal z-order afterwards
+        public void ShowOnTop()
+        {
+            try
+            {
+                if (!Visible) Show();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                TopMost = true;
+                Activate();
+                BringToFront();
+            }
+            catch { }
         }
 
         void ShowFromTray()
@@ -2876,7 +3938,7 @@ namespace SuperCopyApp
         {
             if (!exiting && AnyRunning())
             {
-                DialogResult r = Msg.Show(this,
+                DialogResult r = Msg.ShowSafe(this,
                     L.T("Copy operations are still running.\n\nYes = cancel and exit\nNo = hide to the tray and keep copying",
                         "عمليات النسخ ما زالت قيد التشغيل.\n\nنعم = إلغاء والخروج\nلا = الإخفاء إلى شريط المهام ومتابعة النسخ",
                         "Des copies sont encore en cours.\n\nOui = annuler et quitter\nNon = masquer dans la zone de notification et continuer"),
@@ -2886,20 +3948,24 @@ namespace SuperCopyApp
             }
             if (AnyRunning())
             {
+                // cancel and wait for the workers - but never block the UI thread here: a worker
+                // may be waiting for this thread (the conflict prompt) and would deadlock
                 for (int i = 0; i < jobs.Count; i++) jobs[i].Cancel();
-                int t0 = Environment.TickCount;
-                while (Environment.TickCount - t0 < 3000)
-                {
-                    bool all = true;
-                    for (int i = 0; i < jobs.Count; i++) if (!jobs[i].Finished) all = false;
-                    if (all) break;
-                    Thread.Sleep(30);
-                }
+                closingAfter = true;
+                closingAt = Environment.TickCount;
+                e.Cancel = true;
+                return;
             }
-            timer.Stop();
-            tray.Visible = false;
-            tray.Dispose();
+            Cleanup();
             base.OnFormClosing(e);
+        }
+
+        void Cleanup()
+        {
+            try { timer.Stop(); timer.Dispose(); } catch { }
+            try { tray.Visible = false; tray.Dispose(); } catch { }
+            try { trayMenu.Dispose(); } catch { }
+            try { ConflictPrompt.Ask = null; } catch { }
         }
 
         // ------------------------------------------------------------
@@ -2907,7 +3973,16 @@ namespace SuperCopyApp
         // ------------------------------------------------------------
         void lv_Retrieve(object s, RetrieveVirtualItemEventArgs e)
         {
-            e.Item = new ListViewItem(new string[] { "", "", "", "", "", "" });
+            CopyJob oj;
+            CopyItem it = ListItem(e.ItemIndex, out oj);
+            // the text is painted by lv_DrawSub, but the real values make the list
+            // readable for screen readers and for copying a row
+            e.Item = new ListViewItem(new string[]
+            {
+                it == null || it.Name == null ? "" : it.Name,
+                it == null || it.Src == null ? "" : Fmt.Size(it.Size),
+                "", "", "", ""
+            });
         }
 
         void lv_DrawHeader(object s, DrawListViewColumnHeaderEventArgs e)
@@ -2916,8 +3991,8 @@ namespace SuperCopyApp
             if (r.Width <= 0 || r.Height <= 0) return;
             using (LinearGradientBrush lb = new LinearGradientBrush(r, Theme.Panel2, Theme.Panel, 90f))
                 e.Graphics.FillRectangle(lb, r);
-            using (Pen p = new Pen(Theme.Border))
             {
+                Pen p = Theme.PenBorder;
                 int sepX = L.Rtl ? r.Left : r.Right - 1;
                 e.Graphics.DrawLine(p, sepX, r.Top + 4, sepX, r.Bottom - 5);
                 e.Graphics.DrawLine(p, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
@@ -2933,7 +4008,8 @@ namespace SuperCopyApp
 
         void lv_DrawSub(object s, DrawListViewSubItemEventArgs e)
         {
-            CopyItem it = cur == null ? null : cur.GetItem(e.ItemIndex);
+            CopyJob oj;
+            CopyItem it = ListItem(e.ItemIndex, out oj);
             Graphics g = e.Graphics;
             Rectangle r = e.Bounds;
             if (e.ColumnIndex == 0) r.Width = lv.Columns[0].Width;   // first-column bounds quirk
@@ -2942,7 +4018,7 @@ namespace SuperCopyApp
             if (it == null) return;
 
             Rectangle tr = new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 10), r.Height);
-            bool paused = cur.Paused;
+            bool paused = oj != null && oj.Paused;
             int logical = lv.Columns.Count - 1 - e.ColumnIndex;
             if (!L.Rtl) logical = e.ColumnIndex;
             switch (logical)
@@ -3032,11 +4108,10 @@ namespace SuperCopyApp
         NumericUpDown numConc;
         CheckBox chkSmartConc;
         ComboBox cmbBuf, cmbConf, cmbEngine, cmbLang;
-        CheckBox chkClose;
+        CheckBox chkClose, chkVerify, chkDefault;
         Label lblState;
         bool startupChecked;   // startup install/update suggestion runs once per window
         static readonly int[] BufSizes = new int[] { 64, 256, 1024, 4096 };
-        readonly List<int> engineMap = new List<int>();
 
         Label MakeLabel(string text, int x, int y, Color c)
         {
@@ -3057,7 +4132,7 @@ namespace SuperCopyApp
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 522);
+            ClientSize = new Size(430, 578);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
             L.ApplyRtl(this, true);
@@ -3121,17 +4196,10 @@ namespace SuperCopyApp
             Controls.Add(MakeLabel(L.T("Copy engine:", "محرك النسخ:", "Moteur de copie :"), 20, 222, Theme.Text));
             cmbEngine = new ComboBox();
             cmbEngine.DropDownStyle = ComboBoxStyle.DropDownList;
-            engineMap.Add(0);
             cmbEngine.Items.Add(L.T("Built-in", "مدمج", "Intégré"));
-            engineMap.Add(2);
-            cmbEngine.Items.Add(L.T("CopyFileEx (fastest)", "CopyFileEx (الأسرع)", "CopyFileEx (le plus rapide)"));
-            if (Settings.RobocopyAvailable)
-            {
-                engineMap.Add(1);
-                cmbEngine.Items.Add(L.T("Robocopy (Windows)", "Robocopy (ويندوز)", "Robocopy (Windows)"));
-            }
-            int ei = engineMap.IndexOf(Settings.Engine);
-            cmbEngine.SelectedIndex = ei >= 0 ? ei : 0;
+            if (Settings.RobocopyAvailable) cmbEngine.Items.Add(L.T("Robocopy (Windows)", "Robocopy (ويندوز)", "Robocopy (Windows)"));
+            cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
+            cmbEngine.Enabled = cmbEngine.Items.Count > 1;
             cmbEngine.SetBounds(240, 218, 160, 22);
             Controls.Add(cmbEngine);
 
@@ -3159,38 +4227,60 @@ namespace SuperCopyApp
             chkClose.Location = new Point(20, 294);
             Controls.Add(chkClose);
 
-            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 334, Theme.Cyan));
+            chkVerify = new CheckBox();
+            chkVerify.Text = L.T("Verify copies and moves with XXH3",
+                                 "التحقق من النسخ والنقل باستخدام XXH3",
+                                 "Vérifier les copies et déplacements avec XXH3");
+            chkVerify.AutoSize = true;
+            chkVerify.ForeColor = Theme.Text;
+            chkVerify.BackColor = Theme.Bg;
+            chkVerify.Checked = Settings.Verify;
+            chkVerify.Location = new Point(20, 320);
+            Controls.Add(chkVerify);
+
+            chkDefault = new CheckBox();
+            chkDefault.Text = L.T("Use Super Copy as the default copy (Ctrl+V in Explorer)",
+                                  "استخدام Super Copy كنسخ افتراضي (Ctrl+V في المستكشف)",
+                                  "Utiliser Super Copy comme copie par défaut (Ctrl+V dans l'Explorateur)");
+            chkDefault.AutoSize = true;
+            chkDefault.ForeColor = Theme.Text;
+            chkDefault.BackColor = Theme.Bg;
+            chkDefault.Checked = Settings.DefaultCopy;
+            chkDefault.Location = new Point(20, 346);
+            Controls.Add(chkDefault);
+
+            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 390, Theme.Cyan));
             Button bi2 = UI.MakeButton(L.T("Install menu", "تثبيت القائمة", "Installer le menu"), 180, Color.FromArgb(40, 150, 100));
             Button br = UI.MakeButton(L.T("Remove menu", "إزالة القائمة", "Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
-            bi2.Location = new Point(20, 356);
-            br.Location = new Point(220, 356);
+            bi2.Location = new Point(20, 412);
+            br.Location = new Point(220, 412);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
             Controls.Add(bi2);
             Controls.Add(br);
-            lblState = MakeLabel("", 20, 394, Theme.Dim);
+            lblState = MakeLabel("", 20, 450, Theme.Dim);
             Controls.Add(lblState);
             Controls.Add(MakeLabel(L.T("Windows 11: entries are under \"Show more options\" (Shift+F10).",
                                        "ويندوز 11: تظهر الإدخالات تحت \"إظهار المزيد من الخيارات\" (Shift+F10).",
-                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 414, Theme.Dim));
+                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 470, Theme.Dim));
             RefreshState();
 
-            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 452, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 508, Theme.Text));
             Button babt = UI.MakeButton(L.T("About", "حول", "À propos"), 84, Color.FromArgb(90, 96, 130));
-            babt.Location = new Point(132, 446);
+            babt.Location = new Point(132, 502);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
             Button bupd = UI.MakeButton(L.T("Check for updates", "التحقق من التحديثات", "Rechercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
-            bupd.Location = new Point(226, 446);
+            bupd.Location = new Point(226, 502);
             bupd.Click += new EventHandler(OnCheckUpdate);
             Controls.Add(bupd);
 
             Button ok = UI.MakeButton(L.T("Save", "حفظ", "Enregistrer"), 90, Color.FromArgb(70, 90, 170));
             Button cancel = UI.MakeButton(L.T("Cancel", "إلغاء", "Annuler"), 90, Color.FromArgb(70, 76, 110));
             Button reset = UI.MakeButton(L.T("Reset to default", "استعادة الافتراضي", "Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
-            ok.Location = new Point(236, 486);
-            cancel.Location = new Point(334, 486);
-            reset.Location = new Point(20, 486);
+            ok.Location = new Point(236, 542);
+            cancel.Location = new Point(334, 542);
+            reset.Location = new Point(20, 542);
             ok.Click += new EventHandler(OnSave);
             cancel.Click += new EventHandler(OnCancel);
             reset.Click += new EventHandler(OnReset);
@@ -3277,11 +4367,14 @@ namespace SuperCopyApp
             if (chkSmartConc != null) Settings.SmartConcurrency = chkSmartConc.Checked;
             Settings.BufferKB = BufSizes[Math.Max(0, cmbBuf.SelectedIndex)];
             Settings.Conflict = Math.Max(0, cmbConf.SelectedIndex);
-            Settings.Engine = engineMap[Math.Max(0, cmbEngine.SelectedIndex)];
+            Settings.Engine = Math.Max(0, cmbEngine.SelectedIndex);
+            Settings.Verify = chkVerify.Checked;
+            Settings.DefaultCopy = chkDefault.Checked;
             Settings.AutoClose = chkClose.Checked;
             Settings.Language = Math.Max(0, Math.Min(3, cmbLang.SelectedIndex));
             L.Apply(Settings.Language);
             Settings.Save();
+            HookAgent.Apply();   // start/stop the default-copy helper
             // menu labels live in the registry: rewrite them for the current language
             if (ShellIntegration.IsInstalled())
             {
@@ -3297,24 +4390,25 @@ namespace SuperCopyApp
             Close();
         }
 
-        // Fills the controls with the built-in defaults. Nothing is written until
-        // the user presses Save, so Cancel still discards the reset.
+        // Fills the controls with the built-in defaults. The live settings are not
+        // touched, so Cancel still discards the reset.
         void OnReset(object s, EventArgs e)
         {
-            Settings.ResetDefaults();
-            numConc.Value = Settings.Concurrency;
+            numConc.Value = Settings.DefaultConcurrency;
             if (chkSmartConc != null)
             {
-                chkSmartConc.Checked = Settings.SmartConcurrency;
-                numConc.Enabled = !chkSmartConc.Checked;
+                chkSmartConc.Checked = true;
+                numConc.Enabled = false;
             }
             int bi = 1;
-            for (int i = 0; i < BufSizes.Length; i++) if (BufSizes[i] == Settings.BufferKB) bi = i;
+            for (int i = 0; i < BufSizes.Length; i++) if (BufSizes[i] == Settings.DefaultBufferKB) bi = i;
             cmbBuf.SelectedIndex = bi;
-            cmbEngine.SelectedIndex = Math.Max(0, engineMap.IndexOf(Settings.Engine));
-            cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
-            chkClose.Checked = Settings.AutoClose;
-            cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
+            cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.DefaultEngine));
+            cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.DefaultConflict));
+            chkVerify.Checked = Settings.DefaultVerify;
+            chkDefault.Checked = Settings.DefaultDefaultCopy;
+            chkClose.Checked = false;
+            cmbLang.SelectedIndex = 0;
         }
     }
 
@@ -3366,7 +4460,7 @@ namespace SuperCopyApp
                 opts[i].Location = new Point(18, 64 + i * 24);
                 Controls.Add(opts[i]);
             }
-            opts[0].Checked = true;
+            opts[1].Checked = true;      // "skip" is the safe default: Enter never destroys a file
 
             chkSession = new CheckBox();
             chkSession.Text = L.T("Do this for the rest of this session", "افعل ذلك لبقية هذه الجلسة", "Faire cela pour le reste de la session");
