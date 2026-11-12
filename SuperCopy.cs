@@ -620,7 +620,7 @@ namespace SuperCopyApp
     {
         public const int Current = 5;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
-        const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
+        const string ReleasesUrl = "https://github.com/youcef07dz/super-copy";
 
         public static int ParseVersion(string s)
         {
