@@ -1,5 +1,21 @@
 # History
 
+## v5 (2026-11-12)
+
+### What's new
+
+- **The interface is redesigned**: quiet graphite surfaces, one amber accent, hairlines instead of gradients, and a flat double-chevron icon. Every state (pending, active, done, failed) is read from a dot and one word instead of a colored button; the progress fill is the accent alone.
+- **Every window now has its own title strip**: icon, wordmark, theme, minimize, maximize and close are drawn by the app (36 px main window, 64 px Settings, 40 px dialogs). No native caption, so the chrome matches the content in both themes.
+- **Drag, resize, maximize**: drag a window by its strip with the native move loop (edge snapping still works), resize from the 4 px edge grip, double-click the strip to maximize or restore. Maximizing fills the working area and restores the exact previous bounds, with no frame to drift.
+- **Light and dark themes**: the sun/moon button switches live; the choice is stored as `Theme=` in `settings.ini` (dark by default).
+- **Spacing, type and copy are rebuilt on a 4 px grid**: Segoe UI 9 for text, Consolas for figures (size, speed, ETA, counts, one format, right-aligned); one action row per area; titles such as `Copying 3 items`, `Scanning · 128 files`, `Completed` with no `...` prefixes.
+- **One flat button** paints its neutral, hover, pressed, disabled and focused states itself, including a 1 px accent focus ring; keyboard mnemonics still work in all three languages.
+- Settings and the conflict dialog use the same chrome, grid and field widths; RTL Arabic still mirrors; nothing in the engine, the modes, the Explorer menu or the settings keys changed.
+
+### Archive
+
+The v4 source and binary are kept in [`old/v4`](old/v4).
+
 ## v4 (2026-10-22)
 
 ### What's new

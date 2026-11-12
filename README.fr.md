@@ -15,7 +15,7 @@
 **Copieur de fichiers léger et multi-thread pour Windows XP → 11**<br>
 avec une intégration transparente au menu contextuel de l'Explorateur
 
-[![Version 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 5.0](https://img.shields.io/badge/version-5.0-2EA44F?style=flat-square)](HISTORY.md)
 [![Licence : MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Plateforme : Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 </div>
 
 > [!TIP]
+> **Nouveau dans la v5 :** toute l'interface est redessinée : surfaces graphite sobres, un seul accent ambre, une icône plate et une barre de titre personnalisée sur chaque fenêtre avec **thèmes clair et sombre** (bouton soleil/lune, choix mémorisé). Les fenêtres se déplacent par leur bandeau de titre, se redimensionnent par les bords et se maximisent d'un double-clic. Toujours un seul fichier portable, de XP à 11, en anglais, arabe et français.
+>
 > **Nouveau dans la v4 :** la liste de fichiers a ses **propres barres de défilement** (clic pour sauter, glisser la poignée), la ligne sous la souris reçoit une teinte de survol, et l'application est **DPI aware** - colonnes et hauteurs de ligne nettes à 125-200 %. La vérification coûte deux fois moins : la source est hachée *pendant la copie*.
 >
 > **Nouveau dans la v3 :** Super Copy peut devenir la **copie par défaut** : appuyez sur `Ctrl+V` dans une fenêtre de dossier et le collage est fait par Super Copy (même moteur, mêmes règles de conflit, vérification XXH3). Activable/désactivable dans les Paramètres.
@@ -106,7 +108,7 @@ avec une intégration transparente au menu contextuel de l'Explorateur
 <summary><b>Somme SHA-256</b></summary>
 
 ```text
-4523E8783D310B8F635ADE13EB99827CD4EC4BE9BD27C2CD5195B728A67109B0
+FD3D6A953B516339B73D06837AAEC19D88223F7C2A23B5481E8CA4BB01FA447C
 ```
 
 </details>
@@ -207,7 +209,7 @@ Lancez `build.cmd` depuis la racine du dépôt.
 
 ## 🗂 Historique
 
-Nouveautés de la v4 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire des v1, v2 et v3 sont archivés dans [`old/v1`](old/v1), [`old/v2`](old/v2) et [`old/v3`](old/v3).
+Nouveautés de la v5 et anciennes versions : [HISTORY.md](HISTORY.md). Le code source et le binaire des v1, v2, v3 et v4 sont archivés dans [`old/v1`](old/v1), [`old/v2`](old/v2), [`old/v3`](old/v3) et [`old/v4`](old/v4).
 
 ---
 

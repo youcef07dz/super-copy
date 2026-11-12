@@ -15,7 +15,7 @@
 **Lightweight, multi-threaded file copier for Windows XP → 11**<br>
 with seamless Explorer right-click integration
 
-[![Version 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
+[![Version 5.0](https://img.shields.io/badge/version-5.0-2EA44F?style=flat-square)](HISTORY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -31,6 +31,8 @@ with seamless Explorer right-click integration
 </div>
 
 > [!TIP]
+> **New in v5:** the whole interface is redesigned: quiet graphite surfaces, one amber accent, a flat icon, and a custom title bar on every window with **light and dark themes** (sun/moon button; the choice is remembered). Windows move by their title strip, resize from the edges and double-click to maximize. Same single portable file, XP to 11, English/Arabic/French.
+>
 > **New in v4:** the file list got its **own designed scrollbars** (click to jump, drag the thumb), the file under the mouse gets a proper hover tint, and the whole app is **DPI aware** - crisp list columns and row heights at 125-200% scaling. Verify passes cost about half: the source is hashed *while it is copied*.
 >
 > **New in v3:** Super Copy can be the **default copy**: press `Ctrl+V` in a folder window and the paste is done by Super Copy (same engine, same conflict rules, XXH3 verify) instead of the shell. Switch it on/off in Settings.
@@ -106,7 +108,7 @@ with seamless Explorer right-click integration
 <summary><b>SHA-256 checksum</b></summary>
 
 ```text
-4523E8783D310B8F635ADE13EB99827CD4EC4BE9BD27C2CD5195B728A67109B0
+FD3D6A953B516339B73D06837AAEC19D88223F7C2A23B5481E8CA4BB01FA447C
 ```
 
 </details>
@@ -210,7 +212,7 @@ Run `build.cmd` from the repo root.
 
 ## 🗂 History
 
-What's new in v4 and older releases: [HISTORY.md](HISTORY.md). v1, v2 and v3 source and binary are archived in [`old/v1`](old/v1), [`old/v2`](old/v2) and [`old/v3`](old/v3).
+What's new in v5 and older releases: [HISTORY.md](HISTORY.md). v1, v2, v3 and v4 source and binary are archived in [`old/v1`](old/v1), [`old/v2`](old/v2), [`old/v3`](old/v3) and [`old/v4`](old/v4).
 
 ---
 

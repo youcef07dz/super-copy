@@ -17,7 +17,7 @@
 **ناسخ ملفات خفيف متعدد الخيوط لويندوز XP → 11**<br>
 مع تكامل سلس في قائمة النقر بزر الماوس الأيمن في المستكشف
 
-[![الإصدار 4.0](https://img.shields.io/badge/version-4.0-2EA44F?style=flat-square)](HISTORY.md)
+[![الإصدار 5.0](https://img.shields.io/badge/version-5.0-2EA44F?style=flat-square)](HISTORY.md)
 [![الترخيص: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![المنصة: Windows](https://img.shields.io/badge/Platform-Windows%20XP%E2%80%9311-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/youcef07dz/super-copy)
 [![.NET Framework 2.0](https://img.shields.io/badge/.NET-Framework%202.0-512BD4?style=flat-square&logo=.net&logoColor=white)](https://github.com/youcef07dz/super-copy)
@@ -33,6 +33,8 @@
 </div>
 
 > [!TIP]
+> **جديد في v5:** الواجهة بالكامل أعيد تصميمها: أسطح غرافيت هادئة، ولون كهرماني واحد، وأيقونة مسطحة، وشريط عنوان مخصص في كل نافذة مع **وضعين فاتح وداكن** (زر الشمس/القمر، ويُحفظ الاختيار). النوافذ تُسحب من شريط العنوان وتُكبَّر بالنقر المزدوج وتُغيَّر أبعادها من الحواف. نفس الملف المحمول الواحد، من XP إلى 11، بالإنجليزية والعربية والفرنسية.
+>
 > **جديد في v4:** قائمة الملفات أصبحت لها **شرائط تمرير خاصة بها** (انقر للقفز، اسحب المقبض)، والسطر تحت مؤشر الماوس يظهر بتظليل منفصل، والتطبيق **DPI aware** - أعمدة وارتفاعات صفوف واضحة عند 125-200٪. تكلفة التحقق انخفضت للنصف: تُحسب بصمة المصدر *أثناء النسخ*.
 >
 > **جديد في v3:** يمكن أن يصبح Super Copy هو **النسخ الافتراضي**: اضغط `Ctrl+V` داخل نافذة مجلد فيتم اللصق بواسطة Super Copy (نفس المحرك ونفس قواعد التعارض وتحقق XXH3). يمكن تشغيله أو إيقافه من الإعدادات.
@@ -108,7 +110,7 @@
 <summary><b>ملخّص SHA-256</b></summary>
 
 ```text
-4523E8783D310B8F635ADE13EB99827CD4EC4BE9BD27C2CD5195B728A67109B0
+FD3D6A953B516339B73D06837AAEC19D88223F7C2A23B5481E8CA4BB01FA447C
 ```
 
 </details>
@@ -209,7 +211,7 @@ SuperCopy.exe /selftest
 
 ## 🗂 السجل
 
-ما الجديد في الإصدار v4 والإصدارات السابقة: [HISTORY.md](HISTORY.md). الكود والملف التنفيذي للإصدارات v1 و v2 و v3 محفوظة في [`old/v1`](old/v1) و [`old/v2`](old/v2) و [`old/v3`](old/v3).
+ما الجديد في الإصدار v5 والإصدارات السابقة: [HISTORY.md](HISTORY.md). الكود والملف التنفيذي للإصدارات v1 و v2 و v3 و v4 محفوظة في [`old/v1`](old/v1) و [`old/v2`](old/v2) و [`old/v3`](old/v3) و [`old/v4`](old/v4).
 
 ---
 

@@ -52,11 +52,11 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("youcef07dz")]
 [assembly: System.Reflection.AssemblyProduct("Super Copy")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 youcef07dz")]
-[assembly: System.Reflection.AssemblyFileVersion("4.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("4.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("5.0.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("5.0.0")]
 [assembly: System.Reflection.AssemblyTrademark("Super Copy")]
-// major part must mirror Updates.Current (v4 = 4.0.0.0); bump both + update.txt on release
-[assembly: System.Reflection.AssemblyVersion("4.0.0.0")]
+// major part must mirror Updates.Current (v5 = 5.0.0.0); bump both + update.txt on release
+[assembly: System.Reflection.AssemblyVersion("5.0.0.0")]
 
 namespace SuperCopyApp
 {
@@ -98,6 +98,7 @@ namespace SuperCopyApp
             Application.SetCompatibleTextRenderingDefault(false);
             Settings.Load();
             L.Apply(Settings.Language);
+            Theme.Load(Settings.Theme == 1);
             try
             {
                 switch (mode)
@@ -340,6 +341,7 @@ namespace SuperCopyApp
         public static bool AutoClose = false;
         public static bool Compact = false;           // start in compact (header-only) mode
         public static volatile int Language = 0;      // 0 auto (OS), 1 English, 2 Arabic, 3 French
+        public static int Theme = 0;                  // 0 dark, 1 light
 
         static int Clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -367,6 +369,7 @@ namespace SuperCopyApp
                         case "autoclose": AutoClose = (v == "1"); break;
                         case "compact": Compact = (v == "1"); break;
                         case "language": if (int.TryParse(v, out n)) Language = Clamp(n, 0, 3); break;
+                        case "theme": Theme = (v == "1") ? 1 : 0; break;
                     }
                 }
             }
@@ -387,7 +390,8 @@ namespace SuperCopyApp
                     "DefaultCopy=" + (DefaultCopy ? "1" : "0"),
                     "AutoClose=" + (AutoClose ? "1" : "0"),
                     "Compact=" + (Compact ? "1" : "0"),
-                    "Language=" + Language }, null);
+                    "Language=" + Language,
+                    "Theme=" + Theme }, null);
             }
             catch { }
         }
@@ -405,6 +409,7 @@ namespace SuperCopyApp
             DefaultCopy = DefaultDefaultCopy;
             AutoClose = false;
             Language = 0;
+            Theme = 0;
         }
     }
 
@@ -613,7 +618,7 @@ namespace SuperCopyApp
     // ================================================================
     static class Updates
     {
-        public const int Current = 4;   // must match AssemblyVersion's major part
+        public const int Current = 5;   // must match AssemblyVersion's major part
         const string UpdateTxtUrl = "https://raw.githubusercontent.com/youcef07dz/super-copy/main/update.txt";
         const string ReleasesUrl = "https://github.com/youcef07dz/super-copy/releases";
 
@@ -1419,39 +1424,90 @@ namespace SuperCopyApp
     // ================================================================
     static class Theme
     {
-        // "Default" palette (everything is drawn with GDI+, no images).
-        public static readonly Color Bg = Color.FromArgb(20, 24, 40);
-        public static readonly Color HeadA = Color.FromArgb(42, 50, 88);
-        public static readonly Color HeadB = Color.FromArgb(26, 31, 54);
-        public static readonly Color Panel = Color.FromArgb(30, 36, 60);
-        public static readonly Color Panel2 = Color.FromArgb(46, 55, 92);
-        public static readonly Color Row1 = Color.FromArgb(24, 29, 48);
-        public static readonly Color Row2 = Color.FromArgb(29, 35, 58);
-        public static readonly Color Sel = Color.FromArgb(52, 68, 118);
-        public static readonly Color Hover = Color.FromArgb(37, 45, 73);   // subtle brighten, dimmer than Sel
-        public static readonly Color Text = Color.FromArgb(226, 231, 247);
-        public static readonly Color Dim = Color.FromArgb(138, 148, 180);
-        public static readonly Color Track = Color.FromArgb(13, 16, 30);
-        public static readonly Color Border = Color.FromArgb(64, 75, 112);
-        public static readonly Color Cyan = Color.FromArgb(0, 200, 255);
-        public static readonly Color Violet = Color.FromArgb(150, 92, 255);
-        public static readonly Color Green = Color.FromArgb(70, 220, 130);
-        public static readonly Color Orange = Color.FromArgb(255, 170, 60);
-        public static readonly Color Red = Color.FromArgb(255, 90, 100);
+        // two ramps (graphite / paper) and one amber accent. Load() swaps them at run time;
+        // the brushes and the pen stay alive and only change colour, so no GDI object leaks.
+        public static bool Light;
 
-        public static readonly SolidBrush BrTrack = new SolidBrush(Track);
-        public static readonly SolidBrush BrRow1 = new SolidBrush(Row1);
-        public static readonly SolidBrush BrRow2 = new SolidBrush(Row2);
-        public static readonly SolidBrush BrSel = new SolidBrush(Sel);
-        public static readonly SolidBrush BrHover = new SolidBrush(Hover);
-        public static readonly SolidBrush BrPanel = new SolidBrush(Panel);
-        public static readonly SolidBrush BrGloss = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
-        public static readonly Pen PenBorder = new Pen(Border);
+        public static Color Bg, Panel, Panel2, Row1, Sel, Hover, Text, Dim, Muted, Track, Border;
+        public static Color Accent, Green, Orange, Red, Btn, BtnHover, BtnDown, BtnLine, Thumb, ThumbHot;
 
-        public static readonly Font Cell = new Font("Tahoma", 8.25f);
-        public static readonly Font Bold = new Font("Tahoma", 8.25f, FontStyle.Bold);
-        public static readonly Font Title = new Font("Tahoma", 11f, FontStyle.Bold);
-        public static readonly Font Big = new Font("Tahoma", 12f, FontStyle.Bold);
+        public static readonly SolidBrush BrTrack = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrRow1 = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrSel = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrHover = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrPanel = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrAccent = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrGreen = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrOrange = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrRed = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrMuted = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrThumb = new SolidBrush(Color.Black);
+        public static readonly SolidBrush BrThumbHot = new SolidBrush(Color.Black);
+        public static readonly Pen PenBorder = new Pen(Color.Black);
+
+        static Theme() { Load(false); }
+
+        public static void Load(bool light)
+        {
+            Light = light;
+            if (light)
+            {
+                Bg = Color.FromArgb(241, 241, 238);
+                Panel = Color.FromArgb(251, 251, 250);
+                Panel2 = Color.FromArgb(237, 237, 234);
+                Row1 = Color.FromArgb(255, 255, 255);
+                Sel = Color.FromArgb(233, 233, 228);
+                Hover = Color.FromArgb(240, 240, 237);
+                Text = Color.FromArgb(27, 27, 26);
+                Dim = Color.FromArgb(92, 92, 88);
+                Muted = Color.FromArgb(143, 143, 138);
+                Track = Color.FromArgb(227, 227, 222);
+                Border = Color.FromArgb(216, 216, 210);
+                Accent = Color.FromArgb(180, 120, 24);
+                Green = Color.FromArgb(44, 122, 80);
+                Orange = Color.FromArgb(154, 106, 20);
+                Red = Color.FromArgb(179, 58, 46);
+                Btn = Color.FromArgb(255, 255, 255);
+                BtnHover = Color.FromArgb(242, 242, 239);
+                BtnDown = Color.FromArgb(232, 232, 228);
+                BtnLine = Color.FromArgb(214, 181, 128);
+                Thumb = Color.FromArgb(194, 194, 188);
+                ThumbHot = Color.FromArgb(166, 166, 160);
+            }
+            else
+            {
+                Bg = Color.FromArgb(19, 19, 19);
+                Panel = Color.FromArgb(26, 26, 26);
+                Panel2 = Color.FromArgb(35, 35, 35);
+                Row1 = Color.FromArgb(22, 22, 22);
+                Sel = Color.FromArgb(38, 38, 38);
+                Hover = Color.FromArgb(30, 30, 30);
+                Text = Color.FromArgb(236, 236, 236);
+                Dim = Color.FromArgb(156, 156, 156);
+                Muted = Color.FromArgb(111, 111, 111);
+                Track = Color.FromArgb(13, 13, 13);
+                Border = Color.FromArgb(42, 42, 42);
+                Accent = Color.FromArgb(224, 163, 60);
+                Green = Color.FromArgb(95, 179, 127);
+                Orange = Color.FromArgb(201, 154, 60);
+                Red = Color.FromArgb(217, 106, 92);
+                Btn = Color.FromArgb(32, 32, 32);
+                BtnHover = Color.FromArgb(42, 42, 42);
+                BtnDown = Color.FromArgb(24, 24, 24);
+                BtnLine = Color.FromArgb(118, 91, 45);
+                Thumb = Color.FromArgb(58, 58, 58);
+                ThumbHot = Color.FromArgb(90, 90, 90);
+            }
+            BrTrack.Color = Track; BrRow1.Color = Row1; BrSel.Color = Sel; BrHover.Color = Hover;
+            BrPanel.Color = Panel; BrAccent.Color = Accent; BrGreen.Color = Green; BrOrange.Color = Orange;
+            BrRed.Color = Red; BrMuted.Color = Muted; BrThumb.Color = Thumb; BrThumbHot.Color = ThumbHot;
+            PenBorder.Color = Border;
+        }
+
+        public static readonly Font Cell = new Font("Segoe UI", 9f);
+        public static readonly Font Bold = new Font("Segoe UI", 9f, FontStyle.Bold);
+        public static readonly Font Title = new Font("Segoe UI", 11f);
+        public static readonly Font Mono = new Font("Consolas", 9f);
 
         private static readonly int Dpi = DetectDpi();
 
@@ -1469,20 +1525,37 @@ namespace SuperCopyApp
         public static int ScalePx(int px) { return px * Dpi / 96; }
 
         // state: 0 pending, 1 copying, 2 done, 3 error, 4 skipped, 5 cancelled
-        public static void BarColors(int state, bool paused, out Color a, out Color b)
+        public static Color StateColor(int state, bool paused)
         {
             switch (state)
             {
-                case 1:
-                    if (paused) { a = Orange; b = Color.FromArgb(255, 210, 110); }
-                    else { a = Color.FromArgb(40, 110, 255); b = Cyan; }
-                    break;
-                case 2: a = Color.FromArgb(30, 170, 100); b = Color.FromArgb(120, 240, 160); break;
-                case 3: a = Color.FromArgb(200, 40, 60); b = Color.FromArgb(255, 120, 100); break;
-                case 4: a = Color.FromArgb(90, 95, 140); b = Color.FromArgb(150, 155, 200); break;
-                case 5: a = Color.FromArgb(210, 120, 30); b = Color.FromArgb(255, 190, 90); break;
-                default: a = Color.FromArgb(70, 80, 120); b = Color.FromArgb(90, 100, 140); break;
+                case 1: return paused ? Orange : Accent;
+                case 2: return Green;
+                case 3: return Red;
+                case 4: return Muted;
+                case 5: return Orange;
+                default: return Muted;
             }
+        }
+
+        public static SolidBrush StateBrush(int state, bool paused)
+        {
+            switch (state)
+            {
+                case 1: return paused ? BrOrange : BrAccent;
+                case 2: return BrGreen;
+                case 3: return BrRed;
+                case 5: return BrOrange;
+                default: return BrMuted;
+            }
+        }
+
+        // the rule under a file: accent while it runs, red when it failed, quiet otherwise
+        public static SolidBrush RuleBrush(int state, bool paused)
+        {
+            if (state == 1) return paused ? BrOrange : BrAccent;
+            if (state == 3) return BrRed;
+            return BrMuted;
         }
     }
 
@@ -1511,34 +1584,6 @@ namespace SuperCopyApp
 
     static class Gfx
     {
-        // one gradient brush per (colour pair, size): active rows repaint their bar several
-        // times a second and building a LinearGradientBrush per call was pure garbage churn
-        class BarBrushKey { public int A, B, W, H; public LinearGradientBrush Br; }
-        static readonly List<BarBrushKey> barBrushes = new List<BarBrushKey>();
-
-        // the gradient is defined over (0,0,w,h); a use shifts it onto the real bar rect
-        // (brush transform maps brush space to world space, hence the positive shift)
-        static LinearGradientBrush BarBrush(Color a, Color b, Rectangle gr)
-        {
-            int ia = a.ToArgb(), ib = b.ToArgb();
-            for (int i = 0; i < barBrushes.Count; i++)
-            {
-                BarBrushKey k = barBrushes[i];
-                if (k.A == ia && k.B == ib && k.W == gr.Width && k.H == gr.Height)
-                {
-                    k.Br.ResetTransform();
-                    k.Br.TranslateTransform(gr.X, gr.Y, MatrixOrder.Append);
-                    return k.Br;
-                }
-            }
-            BarBrushKey n = new BarBrushKey();
-            n.A = ia; n.B = ib; n.W = gr.Width; n.H = gr.Height;
-            n.Br = new LinearGradientBrush(new Rectangle(0, 0, gr.Width, gr.Height), a, b, LinearGradientMode.Horizontal);
-            n.Br.TranslateTransform(gr.X, gr.Y, MatrixOrder.Append);
-            if (barBrushes.Count >= 24) barBrushes.RemoveAt(0);
-            barBrushes.Add(n);
-            return n.Br;
-        }
         public static GraphicsPath Round(Rectangle r, int rad)
         {
             GraphicsPath p = new GraphicsPath();
@@ -1552,15 +1597,14 @@ namespace SuperCopyApp
             return p;
         }
 
-        // Colorful progress bar: rounded track, gradient fill, gloss, centered text.
-        public static void Bar(Graphics g, Rectangle r, double frac, Color c1, Color c2,
-                               string text, bool marquee, int tick, int rad)
+        // one rounded rule: track, flat fill, hairline. No gradient, no gloss, no text.
+        public static void Bar(Graphics g, Rectangle r, double frac, Brush fill, bool marquee, int tick)
         {
-            if (r.Width < 6 || r.Height < 5) return;
+            if (r.Width < 6 || r.Height < 3) return;
             SmoothingMode old = g.SmoothingMode;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle tr = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
-            using (GraphicsPath path = Round(tr, rad))
+            using (GraphicsPath path = Round(tr, Math.Max(1, tr.Height / 2)))
             {
                 g.FillPath(Theme.BrTrack, path);
                 GraphicsState st = g.Save();
@@ -1569,7 +1613,7 @@ namespace SuperCopyApp
                 Rectangle fr = Rectangle.Empty;
                 if (marquee)
                 {
-                    int bw = Math.Max(30, tr.Width / 4);
+                    int bw = Math.Max(24, tr.Width / 5);
                     int x = (tick * 16) % (tr.Width + bw) - bw;
                     if (L.Rtl) x = tr.Width - x - bw;
                     fr = new Rectangle(tr.X + x, tr.Y, bw, tr.Height);
@@ -1582,24 +1626,11 @@ namespace SuperCopyApp
                     if (w > 0) fr = L.Rtl ? new Rectangle(tr.Right - w, tr.Y, w, tr.Height)
                                           : new Rectangle(tr.X, tr.Y, w, tr.Height);
                 }
-                if (fr.Width > 0)
-                {
-                    Rectangle gr = marquee ? fr : tr;
-                    g.FillRectangle(BarBrush(c1, c2, gr), fr);
-                    g.FillRectangle(Theme.BrGloss, new Rectangle(fr.X, fr.Y, fr.Width, fr.Height / 2));
-                }
+                if (fr.Width > 0) g.FillRectangle(fill, fr);
                 g.Restore(st);
                 g.DrawPath(Theme.PenBorder, path);
             }
             g.SmoothingMode = old;
-
-            if (text != null && text.Length > 0)
-            {
-                TextFormatFlags fl = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                                     TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
-                TextRenderer.DrawText(g, text, Theme.Bold, new Rectangle(r.X + 1, r.Y + 1, r.Width, r.Height), Color.FromArgb(0, 0, 0), fl);
-                TextRenderer.DrawText(g, text, Theme.Bold, r, Color.White, fl);
-            }
         }
     }
 
@@ -1613,18 +1644,24 @@ namespace SuperCopyApp
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.Clear(Color.Transparent);
                 Rectangle r = new Rectangle(0, 0, size - 1, size - 1);
-                using (GraphicsPath p = Gfx.Round(r, size / 4))
-                using (LinearGradientBrush lb = new LinearGradientBrush(r, Theme.Cyan, Theme.Violet, 45f))
-                    g.FillPath(lb, p);
+                // brand mark: always the dark tile with the amber chevrons, like the .ico,
+                // so it reads the same on a light strip and on the taskbar
+                using (GraphicsPath p = Gfx.Round(r, Math.Max(2, size / 6)))
+                using (SolidBrush back = new SolidBrush(Color.FromArgb(19, 19, 19)))
+                    g.FillPath(back, p);
 
+                // two flat chevrons: the plain mark of a copier
                 float s = size;
                 PointF[] c1 = new PointF[] {
                     new PointF(.26f * s, .26f * s), new PointF(.50f * s, .50f * s), new PointF(.26f * s, .74f * s),
                     new PointF(.38f * s, .74f * s), new PointF(.62f * s, .50f * s), new PointF(.38f * s, .26f * s) };
                 PointF[] c2 = new PointF[c1.Length];
                 for (int i = 0; i < c1.Length; i++) c2[i] = new PointF(c1[i].X + .16f * s, c1[i].Y);
-                g.FillPolygon(Brushes.White, c1);
-                g.FillPolygon(Brushes.White, c2);
+                using (SolidBrush ink = new SolidBrush(Color.FromArgb(224, 163, 60)))
+                {
+                    g.FillPolygon(ink, c1);
+                    g.FillPolygon(ink, c2);
+                }
             }
             return b;
         }
@@ -3354,33 +3391,13 @@ namespace SuperCopyApp
             Graphics g = e.Graphics;
             g.Clear(Theme.Bg);      // the native bar underneath stays covered
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle track = horizontal
-                ? new Rectangle(4, 2, Math.Max(1, Width - 8), Math.Max(1, Height - 4))
-                : new Rectangle(2, 4, Math.Max(1, Width - 4), Math.Max(1, Height - 8));
-            using (GraphicsPath tp = Gfx.Round(track, 4)) g.FillPath(Theme.BrTrack, tp);
             Rectangle t = ThumbRect();
             if (t.IsEmpty) return;
-            bool lit = hot || dragging;
-            using (GraphicsPath p = Gfx.Round(t, 4))
-            {
-                using (LinearGradientBrush lb = new LinearGradientBrush(t,
-                        lit ? Theme.Cyan : Theme.Panel2, lit ? Theme.Violet : Theme.Border,
-                        horizontal ? LinearGradientMode.Horizontal : LinearGradientMode.Vertical))
-                    g.FillPath(lb, p);
-                g.DrawPath(Theme.PenBorder, p);
-                if (LenOf(t) >= 34)      // grip lines, only when there is room for them
-                {
-                    using (Pen grip = new Pen(Color.FromArgb(90, 255, 255, 255)))
-                    {
-                        int cx = t.X + t.Width / 2, cy = t.Y + t.Height / 2;
-                        for (int i = -1; i <= 1; i++)
-                        {
-                            if (horizontal) g.DrawLine(grip, cx + i * 4, cy - 3, cx + i * 4, cy + 4);
-                            else g.DrawLine(grip, cx - 3, cy + i * 4, cx + 4, cy + i * 4);
-                        }
-                    }
-                }
-            }
+            // a plain 6 px pill, no gradient and no grip
+            if (horizontal) { t.Y += (t.Height - 6) / 2; t.Height = 6; }
+            else { t.X += (t.Width - 6) / 2; t.Width = 6; }
+            using (GraphicsPath p = Gfx.Round(t, 3))
+                g.FillPath(hot || dragging ? Theme.BrThumbHot : Theme.BrThumb, p);
         }
 
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hot = true; Invalidate(); }
@@ -3445,17 +3462,17 @@ namespace SuperCopyApp
 
     class HeaderPanel : Panel
     {
-        public string Title = "", Elapsed = "0:00", BarText = "", TxtL = "", TxtM = "", TxtR = "";
+        public string Title = "", Elapsed = "0:00", Meta = "";
         public double Frac;                 // all files of the job
-        public bool Marquee;
-        public int Tick;
-        public Color ColA = Theme.Cyan, ColB = Theme.Violet;
+        public bool Marquee, Paused;
+        public int State, Tick;
         public Button HideButton, ModeButton;
 
         public HeaderPanel()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Panel;
         }
 
         protected override void OnResize(EventArgs e)
@@ -3464,100 +3481,431 @@ namespace SuperCopyApp
             Relayout();
         }
 
+        // width the two header buttons take on the title row
+        int ButtonsWidth()
+        {
+            int w = 0;
+            if (HideButton != null) w += HideButton.Width + 8;
+            if (ModeButton != null) w += ModeButton.Width + 8;
+            return w;
+        }
+
         public void Relayout()
         {
             if (L.Rtl)
             {
-                int x = 14;
-                if (HideButton != null) { HideButton.Location = new Point(x, 9); x += HideButton.Width + 6; }
-                if (ModeButton != null) ModeButton.Location = new Point(x, 9);
+                int x = 16;
+                if (HideButton != null) { HideButton.Location = new Point(x, 8); x += HideButton.Width + 8; }
+                if (ModeButton != null) ModeButton.Location = new Point(x, 8);
                 return;
             }
-            int x2 = Width - 14;
-            if (HideButton != null) { HideButton.Location = new Point(x2 - HideButton.Width, 9); x2 -= HideButton.Width + 6; }
-            if (ModeButton != null) ModeButton.Location = new Point(x2 - ModeButton.Width, 9);
+            int x2 = Width - 16;
+            if (HideButton != null) { HideButton.Location = new Point(x2 - HideButton.Width, 8); x2 -= HideButton.Width + 8; }
+            if (ModeButton != null) ModeButton.Location = new Point(x2 - ModeButton.Width, 8);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (Width < 60 || Height < 40) return;
-            Rectangle rc = ClientRectangle;
-            using (LinearGradientBrush lb = new LinearGradientBrush(rc, Theme.HeadA, Theme.HeadB, 90f))
-                g.FillRectangle(lb, rc);
-            using (LinearGradientBrush ab = new LinearGradientBrush(new Rectangle(0, Height - 3, Width, 3), Theme.Cyan, Theme.Violet, 0f))
-                g.FillRectangle(ab, 0, Height - 3, Width, 3);
+            if (Width < 60 || Height < 48) return;
+            g.Clear(Theme.Panel);
+            g.DrawLine(Theme.PenBorder, 0, Height - 1, Width, Height - 1);
 
-            Rectangle timeR, titleR;
-            TextFormatFlags titleFlag, timeFlag;
+            // title row: name on one side, elapsed on the other, the two buttons past it
+            int bw = ButtonsWidth();
+            Rectangle row = L.Rtl
+                ? new Rectangle(16 + bw, 8, Math.Max(40, Width - 32 - bw), 28)
+                : new Rectangle(16, 8, Math.Max(40, Width - 32 - bw), 28);
+            Rectangle titleR, timeR;
             if (L.Rtl)
             {
-                int btnRight = 14;
-                if (ModeButton != null) btnRight = Math.Max(btnRight, ModeButton.Right);
-                if (HideButton != null) btnRight = Math.Max(btnRight, HideButton.Right);
-                timeR = new Rectangle(btnRight + 12, 10, 110, 24);
-                titleR = new Rectangle(timeR.Right + 10, 10, Math.Max(40, Width - 14 - (timeR.Right + 10)), 24);
-                titleFlag = TextFormatFlags.Right;   // title hugs the right edge
-                timeFlag = TextFormatFlags.Left;     // elapsed sits near the buttons
+                timeR = new Rectangle(row.X, row.Y, 88, row.Height);
+                titleR = new Rectangle(row.X + 96, row.Y, Math.Max(40, row.Width - 96), row.Height);
             }
             else
             {
-                int hideLeft = ModeButton != null ? ModeButton.Left : (HideButton != null ? HideButton.Left : Width - 90);
-                timeR = new Rectangle(hideLeft - 118, 10, 110, 24);
-                titleR = new Rectangle(14, 10, Math.Max(40, timeR.Left - 24), 24);
-                titleFlag = TextFormatFlags.Left;
-                timeFlag = TextFormatFlags.Right;
+                titleR = new Rectangle(row.X, row.Y, Math.Max(40, row.Width - 96), row.Height);
+                timeR = new Rectangle(row.X + row.Width - 88, row.Y, 88, row.Height);
             }
             TextRenderer.DrawText(g, Title, Theme.Title, titleR, Theme.Text,
-                titleFlag | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(g, Elapsed, Theme.Big, timeR, Theme.Cyan,
-                timeFlag | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-
-            Rectangle bar = new Rectangle(14, 42, Width - 28, 26);
-            Gfx.Bar(g, bar, Frac, ColA, ColB, BarText, Marquee, Tick, 8);
-
-            Rectangle sr = new Rectangle(14, 74, Width - 28, 20);
-            TextRenderer.DrawText(g, TxtL, Theme.Bold, sr, Theme.Text,
-                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(g, TxtM, Theme.Bold, sr, Theme.Text,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(g, TxtR, Theme.Cell, sr, Theme.Dim,
+                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(g, Elapsed, Theme.Mono, timeR, Theme.Dim,
                 L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+
+            Gfx.Bar(g, new Rectangle(row.X, 48, row.Width, 8), Frac,
+                Paused ? Theme.BrMuted : Theme.BrAccent, Marquee, Tick);
+
+            TextRenderer.DrawText(g, Meta, Theme.Cell, new Rectangle(row.X, 60, row.Width, 20), Theme.Dim,
+                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }
     }
 
+    // one small flat glyph button for the custom caption strip
+    class CaptionButton : Control
+    {
+        public int Kind;            // 0 minimize, 1 maximize, 2 restore, 3 close, 4 theme
+        bool hot, down;
+
+        public CaptionButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.Selectable, false);
+            TabStop = false;
+            MouseEnter += new EventHandler(delegate { hot = true; Invalidate(); });
+            MouseLeave += new EventHandler(delegate { hot = false; down = false; Invalidate(); });
+            MouseDown += new MouseEventHandler(delegate { down = true; Invalidate(); });
+            MouseUp += new MouseEventHandler(delegate { down = false; Invalidate(); });
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            bool close = Kind == 3;
+            Color back = down ? (close ? Theme.Red : Theme.BtnDown)
+                        : hot ? (close ? Theme.Red : Theme.Sel) : Theme.Panel;
+            using (SolidBrush b = new SolidBrush(back)) g.FillRectangle(b, ClientRectangle);
+            Color ink = (close && (hot || down)) ? Color.White : Theme.Text;
+
+            int cx = Width / 2, cy = Height / 2, s = Theme.ScalePx(6);
+            using (Pen p = new Pen(ink))
+            {
+                switch (Kind)
+                {
+                    case 0:
+                        g.DrawLine(p, cx - s, cy, cx + s + 1, cy);
+                        break;
+                    case 1:
+                        g.DrawRectangle(p, cx - s, cy - s, s * 2, s * 2);
+                        break;
+                    case 2:
+                        g.DrawRectangle(p, cx - s + 3, cy - s - 1, s * 2 - 3, s * 2 - 3);
+                        g.DrawRectangle(p, cx - s, cy - s + 2, s * 2 - 3, s * 2 - 3);
+                        break;
+                    case 3:
+                        g.DrawLine(p, cx - s, cy - s, cx + s, cy + s);
+                        g.DrawLine(p, cx - s, cy + s, cx + s, cy - s);
+                        break;
+                    default:
+                        // theme toggle: sun in the dark theme (click for light), crescent in light
+                        if (!Theme.Light)
+                        {
+                            int r = Theme.ScalePx(3);
+                            g.DrawEllipse(p, cx - r, cy - r, r * 2, r * 2);
+                            for (int i = 0; i < 8; i++)
+                            {
+                                double a = i * Math.PI / 4;
+                                int x1 = cx + (int)Math.Round(Math.Cos(a) * (r + 2));
+                                int y1 = cy + (int)Math.Round(Math.Sin(a) * (r + 2));
+                                int x2 = cx + (int)Math.Round(Math.Cos(a) * (r + 4));
+                                int y2 = cy + (int)Math.Round(Math.Sin(a) * (r + 4));
+                                g.DrawLine(p, x1, y1, x2, y2);
+                            }
+                        }
+                        else
+                        {
+                            int r = Theme.ScalePx(4);
+                            using (SolidBrush b1 = new SolidBrush(ink)) g.FillEllipse(b1, cx - r, cy - r, r * 2, r * 2);
+                            using (SolidBrush b2 = new SolidBrush(back)) g.FillEllipse(b2, cx - r + 2, cy - r - 2, r * 2, r * 2);
+                        }
+                        break;
+                }
+            }
+        }
+    }
+
+    // the window's own title strip: drag area, wordmark, and quiet caption buttons
     class TitleBar : Panel
     {
         public string Title = "", Sub = "";
-        static Bitmap iconBmp;          // built once: a new bitmap on every paint leaks GDI handles
+        public bool ShowMin, ShowMax, ShowClose, ShowTheme;
+        public CaptionButton BtnMin, BtnMax, BtnClose, BtnTheme;
+        public event EventHandler ThemeClick;
+
+        static Bitmap icon32, icon20;      // built once: a new bitmap on every paint leaks GDI handles
 
         public TitleBar()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Panel;
+
+            BtnMin = new CaptionButton(); BtnMin.Kind = 0;
+            BtnMax = new CaptionButton(); BtnMax.Kind = 1;
+            BtnClose = new CaptionButton(); BtnClose.Kind = 3;
+            BtnTheme = new CaptionButton(); BtnTheme.Kind = 4;
+            Controls.Add(BtnMin);
+            Controls.Add(BtnMax);
+            Controls.Add(BtnClose);
+            Controls.Add(BtnTheme);
+
+            BtnMin.Click += new EventHandler(delegate
+            {
+                Form f = FindForm();
+                if (f != null) f.WindowState = FormWindowState.Minimized;
+            });
+            BtnMax.Click += new EventHandler(delegate
+            {
+                Form f = FindForm();
+                if (f == null) return;
+                f.WindowState = f.WindowState == FormWindowState.Maximized
+                    ? FormWindowState.Normal : FormWindowState.Maximized;
+                SyncMax();
+            });
+            BtnClose.Click += new EventHandler(delegate
+            {
+                Form f = FindForm();
+                if (f != null) f.Close();
+            });
+            BtnTheme.Click += new EventHandler(delegate
+            {
+                if (ThemeClick != null) ThemeClick(this, EventArgs.Empty);
+            });
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Relayout();
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            Form f = FindForm();
+            if (f != null) f.Resize += new EventHandler(delegate { SyncMax(); });
+            SyncMax();
+        }
+
+        void SyncMax()
+        {
+            Form f = FindForm();
+            int k = (f != null && f.WindowState == FormWindowState.Maximized) ? 2 : 1;
+            if (BtnMax.Kind != k) { BtnMax.Kind = k; BtnMax.Invalidate(); }
+        }
+
+        public void Relayout()
+        {
+            int w = Theme.ScalePx(46), h = Math.Min(Height, Theme.ScalePx(36));
+            int x = L.Rtl ? 0 : Width - w;
+            int step = L.Rtl ? w : -w;
+            BtnClose.Visible = ShowClose;
+            BtnMax.Visible = ShowMax;
+            BtnMin.Visible = ShowMin;
+            BtnTheme.Visible = ShowTheme;
+            if (ShowClose) { BtnClose.SetBounds(x, 0, w, h); x += step; }
+            if (ShowMax) { BtnMax.SetBounds(x, 0, w, h); x += step; }
+            if (ShowMin) { BtnMin.SetBounds(x, 0, w, h); x += step; }
+            if (ShowTheme)
+            {
+                x += L.Rtl ? Theme.ScalePx(8) : -Theme.ScalePx(8);
+                BtnTheme.SetBounds(x, 0, Theme.ScalePx(36), h);
+            }
+            SyncMax();
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             if (Width < 20 || Height < 10) return;
-            using (LinearGradientBrush lb = new LinearGradientBrush(ClientRectangle, Theme.Cyan, Theme.Violet, 0f))
-                g.FillRectangle(lb, ClientRectangle);
-            if (iconBmp == null) iconBmp = IconMaker.MakeBitmap(32);
-            g.DrawImage(iconBmp, L.Rtl ? Width - 46 : 14, (Height - 32) / 2);
-            Rectangle trTitle = L.Rtl ? new Rectangle(14, 8, Width - 60, 22) : new Rectangle(56, 8, Width - 60, 22);
-            Rectangle trSub = L.Rtl ? new Rectangle(14, 30, Width - 60, 18) : new Rectangle(56, 30, Width - 60, 18);
-            TextRenderer.DrawText(g, Title, Theme.Title, trTitle, Color.White,
-                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, Sub, Theme.Cell, trSub, Color.FromArgb(230, 235, 255),
-                L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            g.Clear(Theme.Panel);
+            g.DrawLine(Theme.PenBorder, 0, Height - 1, Width, Height - 1);
+
+            int bw = 0;
+            if (ShowClose) bw += Theme.ScalePx(46);
+            if (ShowMax) bw += Theme.ScalePx(46);
+            if (ShowMin) bw += Theme.ScalePx(46);
+            if (ShowTheme) bw += Theme.ScalePx(36) + Theme.ScalePx(8);
+
+            int lead = Theme.ScalePx(16);
+            int ih = Height >= Theme.ScalePx(52) ? Theme.ScalePx(32) : Theme.ScalePx(20);
+            int ix = L.Rtl ? Width - lead - ih : lead;
+            Bitmap bmp = ih >= Theme.ScalePx(32) ? (icon32 ?? (icon32 = IconMaker.MakeBitmap(32)))
+                                                 : (icon20 ?? (icon20 = IconMaker.MakeBitmap(20)));
+            g.DrawImage(bmp, ix, (Height - ih) / 2, ih, ih);
+
+            int tw = Math.Max(20, Width - lead * 2 - ih - Theme.ScalePx(12) - bw);
+            int tx = L.Rtl ? lead + bw + Theme.ScalePx(12) : lead + ih + Theme.ScalePx(12);
+            if (Sub == null || Sub.Length == 0)
+            {
+                TextRenderer.DrawText(g, Title, Theme.Title, new Rectangle(tx, 0, tw, Height), Theme.Text,
+                    L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            }
+            else
+            {
+                TextRenderer.DrawText(g, Title, Theme.Title, new Rectangle(tx, Height / 2 - 22, tw, 24), Theme.Text,
+                    L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                TextRenderer.DrawText(g, Sub, Theme.Cell, new Rectangle(tx, Height / 2 + 2, tw, 18), Theme.Dim,
+                    L.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            }
+        }
+    }
+
+    // a borderless window with the themed strip; the strip drives the native move loop,
+    // and no native caption is ever painted.
+    class ChromeForm : Form, IMessageFilter
+    {
+        public bool Resizable;
+        public TitleBar Bar;
+
+        [DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        public ChromeForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Application.AddMessageFilter(this);      // edges need the child controls' clicks too
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            Application.RemoveMessageFilter(this);
+            base.OnHandleDestroyed(e);
+        }
+
+        // HTLEFT..HTBOTTOMRIGHT for the 4 px border, 0 elsewhere
+        int EdgeCode(Point p)
+        {
+            // only the active window owns its edges: a dialog on top must keep its clicks
+            if (!Resizable || WindowState != FormWindowState.Normal || Form.ActiveForm != this) return 0;
+            int g = 4;
+            bool l = p.X < g, r = p.X >= ClientSize.Width - g;
+            bool t = p.Y < g, b = p.Y >= ClientSize.Height - g;
+            if (t && l) return 13;
+            if (t && r) return 14;
+            if (b && l) return 16;
+            if (b && r) return 17;
+            if (l) return 10;
+            if (r) return 11;
+            if (t) return 12;
+            if (b) return 15;
+            return 0;
+        }
+
+        static Cursor EdgeCursor(int code)
+        {
+            if (code == 10 || code == 11) return Cursors.SizeWE;
+            if (code == 12 || code == 15) return Cursors.SizeNS;
+            if (code == 13 || code == 17) return Cursors.SizeNWSE;
+            return Cursors.SizeNESW;
+        }
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg == 0x0020)     // WM_SETCURSOR: show the resize cursor over the border
+            {
+                int c = EdgeCode(PointToClient(Cursor.Position));
+                if (c == 0) return false;
+                Cursor.Current = EdgeCursor(c);
+                return true;
+            }
+            if (m.Msg != 0x0201 || (m.WParam.ToInt32() & 0xFFFF) != 1) return false;   // WM_LBUTTONDOWN
+            int code = EdgeCode(PointToClient(Cursor.Position));
+            if (code == 0) return false;
+            ReleaseCapture();
+            SendMessage(Handle, 0x00A1, (IntPtr)code, IntPtr.Zero);   // NCLBUTTONDOWN -> native sizing loop
+            return true;
+        }
+
+        // The strip is a child window, so the form never sees WM_NCHITTEST over it.
+        // Start the native move loop only once the pointer really moves, otherwise the
+        // loop swallows the second click and double-click cannot restore a maximized window.
+        bool armed;
+        Point dragFrom;
+
+        void BarDown(object s, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            if (e.Clicks >= 2)
+            {
+                armed = false;
+                if (Bar != null && Bar.ShowMax)
+                    WindowState = WindowState == FormWindowState.Maximized
+                        ? FormWindowState.Normal : FormWindowState.Maximized;
+                return;
+            }
+            armed = true;
+            dragFrom = e.Location;
+            Bar.Capture = true;      // the pointer may leave the 36 px strip before the first move
+        }
+
+        void BarMove(object s, MouseEventArgs e)
+        {
+            if (!armed || e.Button != MouseButtons.Left) return;
+            if (Math.Abs(e.X - dragFrom.X) < 4 && Math.Abs(e.Y - dragFrom.Y) < 4) return;
+            armed = false;
+            ReleaseCapture();
+            SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero);   // NCLBUTTONDOWN, HTCAPTION
+        }
+
+        void BarUp(object s, MouseEventArgs e)
+        {
+            armed = false;
+            if (Bar.Capture) Bar.Capture = false;
+        }
+
+        // a fast flick can leave the strip before the first MouseMove; the leave still arrives
+        void BarLeave(object s, EventArgs e)
+        {
+            if (!armed) return;
+            armed = false;
+            ReleaseCapture();
+            SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero);
+        }
+
+        // height: strip height in design pixels. shift: move absolute controls down (dialogs).
+        public TitleBar AddChrome(string title, string sub, int height, bool min, bool max, bool theme, bool shift)
+        {
+            Bar = new TitleBar();
+            Bar.Title = title;
+            Bar.Sub = sub;
+            Bar.Height = height;
+            Bar.Dock = DockStyle.Top;
+            Bar.ShowMin = min;
+            Bar.ShowMax = max;
+            Bar.ShowClose = true;
+            Bar.ShowTheme = theme;
+            Bar.MouseDown += new MouseEventHandler(BarDown);
+            Bar.MouseMove += new MouseEventHandler(BarMove);
+            Bar.MouseUp += new MouseEventHandler(BarUp);
+            Bar.MouseLeave += new EventHandler(BarLeave);
+            Controls.Add(Bar);      // added last: docks at the outermost top edge
+            if (shift)
+            {
+                for (int i = 0; i < Controls.Count; i++)
+                {
+                    Control c = Controls[i];
+                    if (c != Bar && c.Dock == DockStyle.None) c.Top += height;
+                }
+                ClientSize = new Size(ClientSize.Width, ClientSize.Height + height);
+            }
+            Bar.Relayout();
+            return Bar;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (WindowState == FormWindowState.Normal)
+            {
+                Screen s = Screen.FromControl(this);
+                if (s != null && MaximizedBounds != s.WorkingArea) MaximizedBounds = s.WorkingArea;
+            }
+            Invalidate(true);   // a maximize can leave child windows showing stale pixels
         }
     }
 
     static class UI
     {
-        // one paint for hover/press/disabled: the stock flat renderer embosses disabled text
-        // with system control colours, which never matched the white text of active buttons
+        // one neutral button for the whole app: no per-button colours, visible focus ring
         class FlatButton : Button
         {
             bool hot, down;
@@ -3571,35 +3919,38 @@ namespace SuperCopyApp
                 MouseDown += new MouseEventHandler(delegate { down = true; Invalidate(); });
                 MouseUp += new MouseEventHandler(delegate { down = false; Invalidate(); });
                 MouseCaptureChanged += new EventHandler(delegate { down = false; Invalidate(); });
+                GotFocus += new EventHandler(delegate { Invalidate(); });
+                LostFocus += new EventHandler(delegate { Invalidate(); });
                 EnabledChanged += new EventHandler(delegate { Invalidate(); });
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                Rectangle r = e.ClipRectangle;
-                Color back = BackColor;
-                if (Enabled && down)
-                    back = Color.FromArgb(Math.Max(0, back.R - 35), Math.Max(0, back.G - 35), Math.Max(0, back.B - 35));
-                else if (Enabled && hot)
-                    back = Color.FromArgb(Math.Min(255, back.R + 35), Math.Min(255, back.G + 35), Math.Min(255, back.B + 35));
-                using (SolidBrush b = new SolidBrush(back)) e.Graphics.FillRectangle(b, r);
-                // same white as active buttons, half strength when disabled; the '&' of the
-                // keyboard mnemonic stays in Text for keyboard use but is not painted as such
-                Color fore = Enabled ? ForeColor : Color.FromArgb(130, ForeColor);
+                Graphics g = e.Graphics;
+                Rectangle r = ClientRectangle;
+                Color back = !Enabled ? Theme.Panel : (down ? Theme.BtnDown : (hot ? Theme.BtnHover : Theme.Btn));
+                using (SolidBrush b = new SolidBrush(back)) g.FillRectangle(b, r);
+                // the edge is the theme's warm line; hovering or pressing lights it up
+                Color line = !Enabled ? Theme.Border : ((hot || down) ? Theme.Accent : Theme.BtnLine);
+                using (Pen edge = new Pen(line)) g.DrawRectangle(edge, 0, 0, r.Width - 1, r.Height - 1);
+                if (Focused && Enabled)
+                    using (Pen ring = new Pen(Theme.Accent)) g.DrawRectangle(ring, 2, 2, r.Width - 5, r.Height - 5);
+                // the '&' of the keyboard mnemonic stays in Text for keyboard use but is not painted as such
                 string t = Text.Replace("&", "");
-                TextRenderer.DrawText(e.Graphics, t, Font, r, fore,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, t, Font, r, Enabled ? Theme.Text : Theme.Muted,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             }
         }
 
-        public static Button MakeButton(string text, int w, Color back)
+        public static Button MakeButton(string text, int w)
         {
             Button b = new FlatButton();
             b.Text = text;
-            b.Size = new Size(w, 28);
-            b.BackColor = back;
-            b.ForeColor = Color.White;
-            b.Font = Theme.Bold;
+            b.Size = new Size(w, 32);
+            b.BackColor = Theme.Btn;
+            b.ForeColor = Theme.Text;
+            b.Font = Theme.Cell;
             b.Cursor = Cursors.Hand;
             return b;
         }
@@ -3616,7 +3967,7 @@ namespace SuperCopyApp
     // ================================================================
     //  Progress window
     // ================================================================
-    class MainForm : Form
+    class MainForm : ChromeForm
     {
         readonly List<CopyJob> jobs = new List<CopyJob>();
         CopyJob cur, running;
@@ -3672,8 +4023,9 @@ namespace SuperCopyApp
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(800, 520);
-            MinimumSize = new Size(660, 380);
+            Resizable = true;
+            ClientSize = new Size(800, 556);                // 520 of content + the 36 px title strip
+            MinimumSize = new Size(660, 416);
             Icon = IconMaker.MakeIcon();
             L.ApplyRtl(this, false);
 
@@ -3690,8 +4042,8 @@ namespace SuperCopyApp
             lv.BackColor = Theme.Row1;
             lv.ForeColor = Theme.Text;
             BuildColumns();
-            ImageList rowH = new ImageList();      // trick: taller rows for the progress bars
-            rowH.ImageSize = new Size(1, Theme.ScalePx(24));
+            ImageList rowH = new ImageList();      // trick: taller rows for the progress rules
+            rowH.ImageSize = new Size(1, Theme.ScalePx(26));
             lv.SmallImageList = rowH;
             lv.RetrieveVirtualItem += new RetrieveVirtualItemEventHandler(lv_Retrieve);
             lv.DrawColumnHeader += new DrawListViewColumnHeaderEventHandler(lv_DrawHeader);
@@ -3708,20 +4060,16 @@ namespace SuperCopyApp
             // ----- bottom bar -----
             bottom = new Panel();
             bottom.Dock = DockStyle.Bottom;
-            bottom.Height = 46;
+            bottom.Height = 56;
             bottom.BackColor = Theme.Panel;
-            btnPause = UI.MakeButton(L.T("&Pause", "إيقاف (&P)", "&Pause"), 78, Color.FromArgb(214, 140, 30));
-            btnCancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 78, Color.FromArgb(200, 55, 75));
-            btnSettings = UI.MakeButton(L.T("&Settings", "الإعدادات (&S)", "Param&ètres"), 84, Color.FromArgb(70, 90, 170));
-            btnPause.Location = new Point(12, 9);
-            btnCancel.Location = new Point(98, 9);
-            btnSettings.Location = new Point(184, 9);
+            btnPause = UI.MakeButton(L.T("&Pause", "إيقاف (&P)", "&Pause"), 88);
+            btnCancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 88);
+            btnSettings = UI.MakeButton(L.T("&Settings", "الإعدادات (&S)", "Param&ètres"), 96);
             chkClose = new CheckBox();
             chkClose.Text = L.T("Close when &finished", "إغلاق عند الانتهاء (&F)", "&Fermer à la fin");
             chkClose.AutoSize = true;
             chkClose.ForeColor = Theme.Text;
             chkClose.BackColor = Theme.Panel;
-            chkClose.Location = new Point(284, 14);
             chkClose.Checked = Settings.AutoClose;
             chkClose.CheckedChanged += new EventHandler(chkClose_Changed);
             lblErr = new Label();
@@ -3730,8 +4078,7 @@ namespace SuperCopyApp
             lblErr.ForeColor = Theme.Red;
             lblErr.BackColor = Theme.Panel;
             lblErr.TextAlign = ContentAlignment.MiddleRight;
-            lblErr.SetBounds(440, 14, 300, 18);
-            btnErrReport = UI.MakeButton(L.T("&Error report", "تقرير الأخطاء (&E)", "&Rapport d'erreurs"), 132, Color.FromArgb(200, 55, 75));
+            btnErrReport = UI.MakeButton(L.T("&Error report", "تقرير الأخطاء (&E)", "&Rapport d'erreurs"), 140);
             btnErrReport.Visible = false;
             bottom.Controls.Add(btnPause);
             bottom.Controls.Add(btnCancel);
@@ -3749,7 +4096,7 @@ namespace SuperCopyApp
             jobBox = new ListBox();
             jobBox.Dock = DockStyle.Top;
             jobBox.DrawMode = DrawMode.OwnerDrawFixed;
-            jobBox.ItemHeight = Theme.ScalePx(26);
+            jobBox.ItemHeight = Theme.ScalePx(28);
             jobBox.IntegralHeight = false;
             jobBox.BorderStyle = BorderStyle.None;
             jobBox.BackColor = Theme.Panel;
@@ -3760,16 +4107,13 @@ namespace SuperCopyApp
 
             // ----- header -----
             header = new HeaderPanel();
-        header.Dock = DockStyle.Top;
-        header.Height = 104;
-            btnHide = UI.MakeButton(L.T("&Hide", "إخفاء (&H)", "&Masquer"), 70, Color.FromArgb(70, 90, 170));
-            btnHide.Height = 26;
+            header.Dock = DockStyle.Top;
+            header.Height = 96;
+            btnHide = UI.MakeButton(L.T("&Hide", "إخفاء (&H)", "&Masquer"), 64);
             header.HideButton = btnHide;
             header.Controls.Add(btnHide);
-            btnHide.Location = new Point(header.Width - btnHide.Width - 14, 9);
             btnHide.Click += new EventHandler(btnHide_Click);
-            btnMode = UI.MakeButton(L.T("Co&mact", "مضغوط (&M)", "Co&mact"), 78, Color.FromArgb(60, 120, 140));
-            btnMode.Height = 26;
+            btnMode = UI.MakeButton(L.T("Compact", "مضغوط", "Compact"), 80);
             header.ModeButton = btnMode;
             header.Controls.Add(btnMode);
             btnMode.Click += new EventHandler(btnMode_Click);
@@ -3779,6 +4123,10 @@ namespace SuperCopyApp
             Controls.Add(bottom);
             Controls.Add(jobBox);
             Controls.Add(header);
+
+            // ----- themed title strip (replaces the native caption) -----
+            AddChrome("Super Copy", "", 36, true, true, true, false);
+            Bar.ThemeClick += new EventHandler(delegate { ToggleTheme(); });
 
             // ----- custom scrollbars (sit on top of the list's native bars) -----
             scrlV = new ScrollThumb(lv, false);
@@ -3824,6 +4172,8 @@ namespace SuperCopyApp
             lastTick = Environment.TickCount;
             timer.Start();
             tip = new ToolTip();
+            if (Bar != null) tip.SetToolTip(Bar.BtnTheme,
+                L.T("Light / dark theme", "المظهر الفاتح / الداكن", "Thème clair / sombre"));
 
             lv_Resize(null, null);
             bottom_Resize(null, null);
@@ -3844,7 +4194,7 @@ namespace SuperCopyApp
             trayMenu.MenuItems[1].Text = L.T("&Pause / Resume", "إيقاف / متابعة (&P)", "&Pause / Reprendre");
             trayMenu.MenuItems[3].Text = L.T("&Cancel all and exit", "إلغاء الكل والخروج (&C)", "&Tout annuler et quitter");
             BuildColumns();
-            btnMode.Text = compact ? L.T("F&iles", "الملفات (&I)", "F&ichiers") : L.T("Co&mact", "مضغوط (&M)", "Co&mact");
+            btnMode.Text = compact ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
             UpdateButtons();
             lv_Resize(null, EventArgs.Empty);
             bottom_Resize(null, EventArgs.Empty);
@@ -3852,6 +4202,35 @@ namespace SuperCopyApp
             header.Invalidate();
             lv.Invalidate();
             jobBox.Invalidate();
+        }
+
+        // Re-apply the current theme to this window (after the title-bar toggle).
+        public void ApplyTheme()
+        {
+            BackColor = Theme.Bg;
+            header.BackColor = Theme.Panel;
+            bottom.BackColor = Theme.Panel;
+            jobBox.BackColor = Theme.Panel;
+            lv.BackColor = Theme.Row1;
+            lv.ForeColor = Theme.Text;
+            chkClose.ForeColor = Theme.Text;
+            chkClose.BackColor = Theme.Panel;
+            lblErr.ForeColor = Theme.Red;
+            lblErr.BackColor = Theme.Panel;
+            if (Bar != null) { Bar.BackColor = Theme.Panel; Bar.Invalidate(true); }
+            Invalidate(true);
+            header.Invalidate();
+            lv.Invalidate();
+            jobBox.Invalidate();
+            bottom.Invalidate();
+        }
+
+        void ToggleTheme()
+        {
+            Settings.Theme = Settings.Theme == 1 ? 0 : 1;
+            Settings.Save();
+            Theme.Load(Settings.Theme == 1);
+            ApplyTheme();
         }
 
         // ------------------------------------------------------------
@@ -4259,9 +4638,8 @@ namespace SuperCopyApp
         {
             HeaderPanel h = header;
             // remember what is on screen: the header is repainted only when it really changes
-            string oTitle = h.Title, oElapsed = h.Elapsed, oBar = h.BarText;
-            string oL = h.TxtL, oM = h.TxtM, oR = h.TxtR;
-            double oFrac = h.Frac; Color oA = h.ColA, oB = h.ColB; bool oMar = h.Marquee;
+            string oTitle = h.Title, oElapsed = h.Elapsed, oMeta = h.Meta;
+            double oFrac = h.Frac; int oState = h.State; bool oMar = h.Marquee, oPause = h.Paused;
             CopyJob run = null, queued = null, last = null;
             long total = 0, done = 0, active = 0;
             int files = 0, filesDone = 0, errors = 0;
@@ -4286,67 +4664,60 @@ namespace SuperCopyApp
             double frac = total > 0 ? QueueFraction() : (allFinished ? 1.0 : 0.0);
             if (frac > 1) frac = 1; if (frac < 0) frac = 0;
 
-            string errs = errors > 0 ? "    " + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + errors : "";
-            string filesTxt = filesDone + " / " + files + (scanning ? "+" : "") + " " +
-                              L.T("files", "ملف", "fichiers") + "    " +
-                              Fmt.Size(done) + " / " + Fmt.Size(total) + (scanning ? "+" : "") + errs;
-            string verb = j2.Move ? L.T("Moving ", "نقل ", "Déplacement de ") : L.T("Copying ", "نسخ ", "Copie de ");
             h.Elapsed = Fmt.Time(active / 1000.0);
-            h.Marquee = false;
             h.Frac = frac;
-            h.TxtR = filesTxt;
+            h.Paused = j2.Paused;
+            h.Marquee = false;
+            h.State = !j2.Started ? 0 : (j2.Finished ? (j2.Cancelled ? 5 : (errors > 0 ? 3 : 2)) : 1);
+
+            string filesTxt = filesDone + " / " + files + (scanning ? "+" : "") + " " +
+                              L.T("files", "ملف", "fichiers");
+            string sep = "   ·   ";
+            string pct = ((int)Math.Round(h.Frac * 100)) + "%";
 
             if (!j2.Started)
             {
-                h.Title = L.T("Queued: ", "في الانتظار: ", "En attente : ") + j2.Summary;
-                h.BarText = L.T("Waiting...", "بالانتظار...", "En attente...");
+                h.Title = L.T("Queued · ", "في الانتظار · ", "En attente · ") + j2.Summary;
+                h.Meta = L.T("Waiting", "بالانتظار", "En attente");
                 h.Frac = 0;
-                h.ColA = Color.FromArgb(70, 80, 120); h.ColB = Color.FromArgb(100, 110, 150);
-                h.TxtL = L.T("Speed: -", "السرعة: -", "Vitesse : -");
-                h.TxtM = L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -");
             }
             else if (j2.Finished)
             {
                 if (j2.Cancelled)
                 {
-                    h.Title = L.T("Cancelled: ", "ملغى: ", "Annulé : ") + j2.Summary;
-                    h.ColA = Color.FromArgb(210, 120, 30); h.ColB = Color.FromArgb(255, 190, 90);
+                    h.Title = L.T("Cancelled · ", "ملغى · ", "Annulé · ") + j2.Summary;
+                    h.Meta = pct + sep + filesTxt;
                 }
                 else if (errors > 0)
                 {
-                    h.Title = L.T("Finished with errors: ", "انتهى مع أخطاء: ", "Terminé avec des erreurs : ") + j2.Summary;
+                    h.Title = L.T("Completed with errors · ", "اكتمل مع أخطاء · ", "Terminé avec des erreurs · ") + j2.Summary;
                     h.Frac = 1.0;
-                    h.ColA = Color.FromArgb(200, 40, 60); h.ColB = Color.FromArgb(255, 120, 100);
+                    h.Meta = pct + sep + L.T("Errors: ", "الأخطاء: ", "Erreurs : ") + errors + sep + filesTxt;
                 }
                 else
                 {
-                    h.Title = L.T("Completed: ", "مكتمل: ", "Terminé : ") + j2.Summary;
+                    h.Title = L.T("Completed · ", "مكتمل · ", "Terminé · ") + j2.Summary;
                     h.Frac = 1.0;
-                    h.ColA = Color.FromArgb(30, 170, 100); h.ColB = Color.FromArgb(120, 240, 160);
+                    double avg = active > 0 ? done * 1000.0 / active : 0;
+                    h.Meta = pct + sep + Fmt.Size((long)avg) + "/s" + L.T(" avg", " متوسط", " moy.") + sep +
+                             Fmt.Time(active / 1000.0) + L.T(" total", " الإجمالي", " total") + sep + filesTxt;
                 }
-                h.BarText = ((int)Math.Round(h.Frac * 100)) + "%";
-                double avg = active > 0 ? done * 1000.0 / active : 0;
-                h.TxtL = L.T("Average speed: ", "متوسط السرعة: ", "Vitesse moyenne : ") + Fmt.Size((long)avg) + "/s";
-                h.TxtM = L.T("Total time: ", "الوقت الإجمالي: ", "Durée totale : ") + Fmt.Time(active / 1000.0);
             }
             else
             {
-                bool paused = j2.Paused;
-                h.Title = (paused ? L.T("Paused - ", "متوقف - ", "En pause - ") : verb) + j2.Summary;
+                string verb = j2.Move ? L.T("Moving · ", "نقل · ", "Déplacement · ") : L.T("Copying · ", "نسخ · ", "Copie · ");
+                h.Title = (j2.Paused ? L.T("Paused · ", "متوقف · ", "En pause · ") : verb) + j2.Summary;
                 if (scanning)
                 {
                     h.Marquee = true;
-                    h.BarText = L.T("Scanning folders...  ", "جارٍ فحص المجلدات...  ", "Analyse des dossiers...  ") +
-                                files + " " + L.T("files found", "ملف", "fichiers");
+                    h.Meta = L.T("Scanning · ", "جارٍ الفحص · ", "Analyse · ") + files + " " + L.T("files", "ملف", "fichiers");
                 }
-                else h.BarText = (h.Frac * 100).ToString("0.0") + "%";
-                if (paused) { h.ColA = Theme.Orange; h.ColB = Color.FromArgb(255, 210, 110); }
-                else { h.ColA = Theme.Cyan; h.ColB = Theme.Violet; }
-                h.TxtL = paused ? L.T("Speed: paused", "السرعة: متوقفة", "Vitesse : en pause")
-                                : L.T("Speed: ", "السرعة: ", "Vitesse : ") + Fmt.Size(speed) + "/s";
-                h.TxtM = paused ? L.T("Total ETA: -", "الوقت المتبقي: -", "Temps restant : -")
-                                : (scanning ? L.T("Total ETA: calculating...", "الوقت المتبقي: قيد الحساب...", "Temps restant : calcul...")
-                                            : L.T("Total ETA: ", "الوقت المتبقي: ", "Temps restant : ") + Fmt.Time(eta));
+                else
+                {
+                    string speedTxt = j2.Paused ? L.T("paused", "متوقف", "en pause") : Fmt.Size(speed) + "/s";
+                    string etaTxt = (j2.Paused || eta < 0) ? "-" : Fmt.Time(eta) + L.T(" left", " متبقٍ", " restant");
+                    h.Meta = pct + sep + speedTxt + sep + etaTxt + sep + filesTxt;
+                }
             }
             string lastErr = null;
             for (int i = 0; i < jobs.Count; i++) if (jobs[i].LastError != null) lastErr = jobs[i].LastError;
@@ -4355,9 +4726,8 @@ namespace SuperCopyApp
             if (lblErr.Text != full) lblErr.Text = full;
             if (tip != null) { try { tip.SetToolTip(lblErr, full); } catch { } }
 
-            headerDirty = oTitle != h.Title || oElapsed != h.Elapsed || oBar != h.BarText ||
-                          oL != h.TxtL || oM != h.TxtM || oR != h.TxtR ||
-                          oFrac != h.Frac || oA != h.ColA || oB != h.ColB || oMar != h.Marquee;
+            headerDirty = oTitle != h.Title || oElapsed != h.Elapsed || oMeta != h.Meta ||
+                          oFrac != h.Frac || oState != h.State || oMar != h.Marquee || oPause != h.Paused;
         }
 
         // a custom bar is shown only while the list really scrolls along that axis
@@ -4611,11 +4981,12 @@ namespace SuperCopyApp
             }
             if (text.Length == 0) text = L.T("No errors.", "لا توجد أخطاء.", "Aucune erreur.");
 
-            Form f = new Form();
+            ChromeForm f = new ChromeForm();
             f.Text = L.T("Error report", "تقرير الأخطاء", "Rapport d'erreurs");
             f.Font = Theme.Cell;
             f.BackColor = Theme.Bg;
             f.ForeColor = Theme.Text;
+            f.Resizable = true;
             f.StartPosition = FormStartPosition.CenterParent;
             f.AutoScaleMode = AutoScaleMode.Dpi;     // coordinates below are 96 dpi design pixels
             f.AutoScaleDimensions = new SizeF(96F, 96F);
@@ -4636,14 +5007,14 @@ namespace SuperCopyApp
 
             Panel bar = new Panel();
             bar.Dock = DockStyle.Bottom;
-            bar.Height = 46;
+            bar.Height = 56;
             bar.BackColor = Theme.Panel;
-            Button copy = UI.MakeButton(L.T("&Copy", "نسخ (&C)", "&Copier"), 84, Color.FromArgb(70, 90, 170));
-            Button close = UI.MakeButton(L.T("C&lose", "إغلاق (&L)", "&Fermer"), 84, Color.FromArgb(120, 120, 130));
+            Button copy = UI.MakeButton(L.T("&Copy", "نسخ (&C)", "&Copier"), 96);
+            Button close = UI.MakeButton(L.T("C&lose", "إغلاق (&L)", "&Fermer"), 96);
             copy.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            copy.Location = new Point(f.ClientSize.Width - 190, 9);
-            close.Location = new Point(f.ClientSize.Width - 96, 9);
+            copy.Location = new Point(f.ClientSize.Width - 16 - 96 - 8 - 96, 12);
+            close.Location = new Point(f.ClientSize.Width - 16 - 96, 12);
             copy.Click += delegate
             {
                 try { Clipboard.SetText(tb.Text); copy.Text = L.T("Copied", "تم النسخ", "Copié"); }
@@ -4654,6 +5025,7 @@ namespace SuperCopyApp
             bar.Controls.Add(close);
             f.Controls.Add(tb);
             f.Controls.Add(bar);
+            f.AddChrome(f.Text, "", 40, false, true, false, true);
             f.ShowDialog(this);
             f.Dispose();
         }
@@ -4685,19 +5057,20 @@ namespace SuperCopyApp
             lv.Visible = !on;
             bottom.Visible = !on;
             jobBox.Visible = !on && jobs.Count >= 2;
-            btnMode.Text = on ? L.T("F&iles", "الملفات (&I)", "F&ichiers") : L.T("Co&mact", "مضغوط (&M)", "Co&mact");
+            btnMode.Text = on ? L.T("Files", "الملفات", "Fichiers") : L.T("Compact", "مضغوط", "Compact");
             MaximizeBox = !on;
             if (on)
             {
+                int chH = Bar == null ? 0 : Bar.Height;
                 MinimumSize = new Size(420, 0);
-                ClientSize = new Size(520, header.Height);
-                MaximumSize = new Size(int.MaxValue, header.Height + (Height - ClientSize.Height));
+                ClientSize = new Size(520, header.Height + chH);
+                MaximumSize = new Size(int.MaxValue, header.Height + chH);
             }
             else
             {
-                MinimumSize = new Size(660, 380);
-                if (savedSize.Width >= 660 && savedSize.Height >= 380) Size = savedSize;
-                else ClientSize = new Size(800, 520);
+                MinimumSize = new Size(660, 416);
+                if (savedSize.Width >= 660 && savedSize.Height >= 416) Size = savedSize;
+                else ClientSize = new Size(800, 556);
             }
         }
 
@@ -4742,26 +5115,33 @@ namespace SuperCopyApp
 
         void bottom_Resize(object s, EventArgs e)
         {
+            int y = 12, gap = 8;
             int bw = btnErrReport != null && btnErrReport.Visible ? btnErrReport.Width : 0;
+
             if (L.Rtl)
             {
-                int right = bottom.ClientSize.Width - 12;
-                btnPause.SetBounds(right - btnPause.Width, 9, btnPause.Width, 28);
-                btnCancel.SetBounds(btnPause.Left - 8 - btnCancel.Width, 9, btnCancel.Width, 28);
-                btnSettings.SetBounds(btnCancel.Left - 8 - btnSettings.Width, 9, btnSettings.Width, 28);
-                int chkLeft = btnSettings.Left - 16 - chkClose.Width;
-                chkClose.Location = new Point(chkLeft, 14);
-                int left = 12;
-                if (bw > 0) { btnErrReport.SetBounds(left, 9, bw, 28); left += bw + 6; }
+                int x = bottom.ClientSize.Width - 16;
+                btnPause.SetBounds(x - btnPause.Width, y, btnPause.Width, 32);
+                btnCancel.SetBounds(btnPause.Left - gap - btnCancel.Width, y, btnCancel.Width, 32);
+                btnSettings.SetBounds(btnCancel.Left - gap - btnSettings.Width, y, btnSettings.Width, 32);
+                chkClose.Location = new Point(16, y + 8);
+                int lblX = chkClose.Right + 16;
+                if (bw > 0) btnErrReport.SetBounds(16, y, bw, 32);
                 lblErr.TextAlign = ContentAlignment.MiddleLeft;
-                lblErr.SetBounds(left, 14, Math.Max(40, chkLeft - 14 - left), 18);
+                lblErr.SetBounds(lblX + (bw > 0 ? bw + 8 : 0), y + 8,
+                                 Math.Max(40, btnSettings.Left - 16 - lblX - (bw > 0 ? bw + 8 : 0)), 16);
                 return;
             }
-            int x = chkClose.Right + 14;
-            int rightLtr = bottom.ClientSize.Width - 12;
-            if (bw > 0) btnErrReport.SetBounds(rightLtr - bw, 9, bw, 28);
+            int x2 = 16;
+            btnPause.SetBounds(x2, y, btnPause.Width, 32);
+            btnCancel.SetBounds(btnPause.Right + gap, y, btnCancel.Width, 32);
+            btnSettings.SetBounds(btnCancel.Right + gap, y, btnSettings.Width, 32);
+            chkClose.Location = new Point(btnSettings.Right + 16, y + 8);
+            int lblLeft = chkClose.Right + 16;
+            int right = bottom.ClientSize.Width - 16;
+            if (bw > 0) { btnErrReport.SetBounds(right - bw, y, bw, 32); right -= bw + 8; }
             lblErr.TextAlign = ContentAlignment.MiddleRight;
-            lblErr.SetBounds(x, 14, Math.Max(40, rightLtr - bw - 6 - x), 18);
+            lblErr.SetBounds(lblLeft, y + 8, Math.Max(40, right - lblLeft), 16);
         }
 
         void lv_Resize(object s, EventArgs e)
@@ -4786,19 +5166,19 @@ namespace SuperCopyApp
             if (L.Rtl)
             {
                 lv.Columns.Add(L.T("Status", "الحالة", "État"), Theme.ScalePx(120));
-                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(90));
-                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(85));
-                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(150));
-                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(80));
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(80));
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(88));
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(144));
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(88));
                 colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), Theme.ScalePx(300));
             }
             else
             {
                 colFile = lv.Columns.Add(L.T("File", "ملف", "Fichier"), Theme.ScalePx(300));
-                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(80));
-                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(150));
-                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(85));
-                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(90));
+                lv.Columns.Add(L.T("Size", "الحجم", "Taille"), Theme.ScalePx(88));
+                lv.Columns.Add(L.T("Progress", "التقدم", "Progression"), Theme.ScalePx(144));
+                lv.Columns.Add(L.T("Speed", "السرعة", "Vitesse"), Theme.ScalePx(88));
+                lv.Columns.Add(L.T("ETA", "المتبقي", "Restant"), Theme.ScalePx(80));
                 lv.Columns.Add(L.T("Status", "الحالة", "État"), Theme.ScalePx(120));
             }
             lv_Resize(null, EventArgs.Empty);
@@ -4922,16 +5302,10 @@ namespace SuperCopyApp
             e.DrawDefault = false;   // the native header look must never leak over the designed one
             Rectangle r = e.Bounds;
             if (r.Width <= 0 || r.Height <= 0) return;
-            using (LinearGradientBrush lb = new LinearGradientBrush(r, Theme.Panel2, Theme.Panel, 90f))
-                e.Graphics.FillRectangle(lb, r);
-            {
-                Pen p = Theme.PenBorder;
-                int sepX = L.Rtl ? r.Left : r.Right - 1;
-                e.Graphics.DrawLine(p, sepX, r.Top + 4, sepX, r.Bottom - 5);
-                e.Graphics.DrawLine(p, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
-            }
-            TextRenderer.DrawText(e.Graphics, e.Header.Text, Theme.Bold,
-                new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 8), r.Height), Theme.Text, CellFlags);
+            using (SolidBrush b = new SolidBrush(Theme.Panel)) e.Graphics.FillRectangle(b, r);
+            e.Graphics.DrawLine(Theme.PenBorder, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
+            TextRenderer.DrawText(e.Graphics, e.Header.Text, Theme.Cell,
+                new Rectangle(r.X + 8, r.Y, Math.Max(1, r.Width - 12), r.Height), Theme.Dim, CellFlags);
         }
 
         void lv_DrawItem(object s, DrawListViewItemEventArgs e)
@@ -4943,8 +5317,9 @@ namespace SuperCopyApp
             Graphics g = e.Graphics;
             bool sel = (e.State & ListViewItemStates.Selected) != 0;
             int y = e.Bounds.Y, h = e.Bounds.Height;
-            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow, e.ItemIndex),
+            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow),
                 new Rectangle(0, y, lv.ClientSize.Width, h));
+            g.DrawLine(Theme.PenBorder, 0, y + h - 1, lv.ClientSize.Width, y + h - 1);
             CopyJob oj;
             CopyItem it = RowItem(e.ItemIndex, out oj);
             if (it == null) return;
@@ -4960,12 +5335,12 @@ namespace SuperCopyApp
             }
         }
 
-        // row background: selection > hover > zebra stripes
-        Brush RowBack(bool sel, bool hot, int index)
+        // row background: selection > hover > plain
+        Brush RowBack(bool sel, bool hot)
         {
             if (sel) return Theme.BrSel;
             if (hot) return Theme.BrHover;
-            return (index & 1) == 0 ? Theme.BrRow1 : Theme.BrRow2;
+            return Theme.BrRow1;
         }
 
         void lv_DrawSub(object s, DrawListViewSubItemEventArgs e)
@@ -4977,7 +5352,7 @@ namespace SuperCopyApp
             Rectangle r = e.Bounds;
             if (e.ColumnIndex == 0) r.Width = lv.Columns[0].Width;   // first-column bounds quirk
             bool sel = (e.ItemState & ListViewItemStates.Selected) != 0;
-            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow, e.ItemIndex), r);
+            g.FillRectangle(RowBack(sel, e.ItemIndex == hotRow), r);
             if (it == null) return;
             PaintCell(g, L.Rtl ? lv.Columns.Count - 1 - e.ColumnIndex : e.ColumnIndex, r, it, oj);
         }
@@ -4985,7 +5360,7 @@ namespace SuperCopyApp
         // one cell of a row; logical column 0 = file name ... 5 = status
         void PaintCell(Graphics g, int logical, Rectangle r, CopyItem it, CopyJob oj)
         {
-            Rectangle tr = new Rectangle(r.X + 6, r.Y, Math.Max(1, r.Width - 10), r.Height);
+            Rectangle tr = new Rectangle(r.X + 8, r.Y, Math.Max(1, r.Width - 12), r.Height);
             bool paused = oj != null && oj.Paused;
             switch (logical)
             {
@@ -4995,44 +5370,46 @@ namespace SuperCopyApp
                         TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 1:
-                    TextRenderer.DrawText(g, it.SizeText == null ? "" : it.SizeText, Theme.Cell, tr, Theme.Dim,
+                    TextRenderer.DrawText(g, it.SizeText == null ? "" : it.SizeText, Theme.Mono, tr, Theme.Dim,
                         L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 2:
                     {
                         int st = it.State;
-                        Color a, b;
-                        Theme.BarColors(st, paused, out a, out b);
-                        double f = it.Fraction;
-                        string txt = (st == 0 || it.Src == null) ? "" : ((int)(f * 100)) + "%";
-                        Gfx.Bar(g, new Rectangle(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8), f, a, b, txt, false, 0, 3);
+                        if (st == 0) break;     // queued: no track, no noise
+                        int barW = Math.Max(24, r.Width - 72);
+                        int bx = L.Rtl ? r.Right - 8 - barW : r.X + 8;
+                        Gfx.Bar(g, new Rectangle(bx, r.Y + (r.Height - 4) / 2, barW, 4),
+                                it.Fraction, Theme.RuleBrush(st, paused), false, 0);
+                        if (it.Src != null)
+                        {
+                            Rectangle pr = L.Rtl ? new Rectangle(r.X + 8, r.Y, 52, r.Height)
+                                                 : new Rectangle(r.X + barW + 16, r.Y, 52, r.Height);
+                            TextRenderer.DrawText(g, ((int)(it.Fraction * 100)) + "%", Theme.Mono, pr, Theme.Dim,
+                                L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                        }
                     }
                     break;
                 case 3:
                     if (it.State == 1)
-                        TextRenderer.DrawText(g, SpeedText(it, paused), Theme.Cell, tr, Theme.Text,
+                        TextRenderer.DrawText(g, SpeedText(it, paused), Theme.Mono, tr, Theme.Dim,
                             L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 4:
                     if (it.State == 1 && !paused && it.Speed > 1)
-                        TextRenderer.DrawText(g, EtaText(it, paused), Theme.Cell, tr, Theme.Text,
+                        TextRenderer.DrawText(g, EtaText(it, paused), Theme.Mono, tr, Theme.Dim,
                             L.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
                     break;
                 case 5:
                     {
-                        string t;
-                        Color c;
-                        switch (it.State)
-                        {
-                            case 1: c = paused ? Theme.Orange : Theme.Cyan; break;
-                            case 2: c = Theme.Green; break;
-                            case 3: c = Theme.Red; break;
-                            case 4: c = Theme.Dim; break;
-                            case 5: c = Theme.Orange; break;
-                            default: c = Theme.Dim; break;
-                        }
-                        t = StatusText(it, paused);
-                        TextRenderer.DrawText(g, t, Theme.Cell, tr, c, CellFlags);
+                        // a 6 px dot carries the state; the word stays quiet
+                        int dot = Theme.ScalePx(6);
+                        int dx = L.Rtl ? tr.Right - dot : tr.X;
+                        g.FillEllipse(Theme.StateBrush(it.State, paused), dx, r.Y + (r.Height - dot) / 2, dot, dot);
+                        Rectangle txR = L.Rtl ? new Rectangle(tr.X, tr.Y, Math.Max(1, tr.Width - dot - 8), tr.Height)
+                                              : new Rectangle(tr.X + dot + 8, tr.Y, Math.Max(1, tr.Width - dot - 8), tr.Height);
+                        TextRenderer.DrawText(g, StatusText(it, paused), Theme.Cell, txR,
+                            it.State == 0 ? Theme.Dim : Theme.Text, CellFlags);
                     }
                     break;
             }
@@ -5049,26 +5426,24 @@ namespace SuperCopyApp
             bool sel = (e.State & DrawItemState.Selected) != 0;
             g.FillRectangle(sel ? Theme.BrSel : Theme.BrPanel, e.Bounds);
 
-            Rectangle tr = L.Rtl
-                ? new Rectangle(e.Bounds.X + 232, e.Bounds.Y, Math.Max(10, e.Bounds.Width - 240), e.Bounds.Height)
-                : new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(10, e.Bounds.Width - 240), e.Bounds.Height);
-            TextRenderer.DrawText(g, (e.Index + 1) + ".  " + (j.Move ? L.T("Move ", "نقل ", "Déplacer ") : L.T("Copy ", "نسخ ", "Copier ")) + j.Summary,
+            int bw = 176;
+            int barX = L.Rtl ? e.Bounds.X + 16 : e.Bounds.Right - 16 - bw;
+            Rectangle tr = new Rectangle(e.Bounds.X + 16, e.Bounds.Y,
+                Math.Max(10, e.Bounds.Width - 48 - bw), e.Bounds.Height);
+            string verb = j.Move ? L.T("Move · ", "نقل · ", "Déplacer · ") : L.T("Copy · ", "نسخ · ", "Copier · ");
+            TextRenderer.DrawText(g, (e.Index + 1) + "   " + verb + j.Summary,
                 Theme.Cell, tr, Theme.Text, CellFlags);
 
             int st = !j.Started ? 0 : (j.Finished ? (j.Cancelled ? 5 : (j.Errors > 0 ? 3 : 2)) : 1);
-            Color a, b;
-            Theme.BarColors(st, j.Paused, out a, out b);
             double f = (j.Finished && !j.Cancelled) ? 1.0 : j.Fraction;
-            string txt = !j.Started ? L.T("Queued", "في الانتظار", "En attente") : ((int)Math.Round(f * 100)) + "%";
-            int barX = L.Rtl ? e.Bounds.X + 12 : e.Bounds.Right - 218;
-            Gfx.Bar(g, new Rectangle(barX, e.Bounds.Y + 5, 206, e.Bounds.Height - 10), f, a, b, txt, false, 0, 4);
+            Gfx.Bar(g, new Rectangle(barX, e.Bounds.Y + 12, bw, 4), f, Theme.RuleBrush(st, j.Paused), false, 0);
         }
     }
 
     // ================================================================
     //  Settings window
     // ================================================================
-    class SettingsForm : Form
+    class SettingsForm : ChromeForm
     {
         NumericUpDown numConc;
         CheckBox chkSmartConc;
@@ -5094,34 +5469,30 @@ namespace SuperCopyApp
         {
             Text = L.T("Super Copy - Settings", "Super Copy - الإعدادات", "Super Copy - Paramètres");
             Font = Theme.Cell;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(430, 578);
+            ClientSize = new Size(560, 680);
             BackColor = Theme.Bg;
             Icon = IconMaker.MakeIcon();
             L.ApplyRtl(this, true);
 
-            TitleBar tb = new TitleBar();
-            tb.Title = "Super Copy";
-            tb.Sub = L.T("Fast, light file copier with Explorer integration",
-                         "ناسخ ملفات سريع وخفيف مع تكامل المستكشف",
-                         "Copieur de fichiers rapide et léger avec intégration Explorateur");
-            tb.Dock = DockStyle.Top;
-            tb.Height = 56;
-            Controls.Add(tb);
+            AddChrome("Super Copy",
+                L.T("Fast, light file copier with Explorer integration",
+                    "ناسخ ملفات سريع وخفيف مع تكامل المستكشف",
+                    "Copieur de fichiers rapide et léger avec intégration Explorateur"),
+                64, false, false, false, false);
 
-            Controls.Add(MakeLabel(L.T("Language:", "اللغة:", "Langue :"), 20, 72, Theme.Text));
+            int fx = 344, fw = 192;   // field column
+
+            Controls.Add(MakeLabel(L.T("Language", "اللغة", "Langue"), 24, 84, Theme.Dim));
             cmbLang = new ComboBox();
             cmbLang.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbLang.Items.AddRange(new object[] {
                 L.T("Auto (system)", "تلقائي (النظام)", "Auto (système)"),
                 "English", "العربية", "Français" });
             cmbLang.SelectedIndex = Math.Max(0, Math.Min(3, Settings.Language));
-            cmbLang.SetBounds(240, 68, 160, 22);
+            cmbLang.SetBounds(fx, 80, fw, 24);
             Controls.Add(cmbLang);
 
             chkSmartConc = new CheckBox();
@@ -5132,46 +5503,46 @@ namespace SuperCopyApp
             chkSmartConc.ForeColor = Theme.Text;
             chkSmartConc.BackColor = Theme.Bg;
             chkSmartConc.Checked = Settings.SmartConcurrency;
-            chkSmartConc.Location = new Point(20, 106);
+            chkSmartConc.Location = new Point(24, 112);
             chkSmartConc.CheckedChanged += delegate(object s, EventArgs e) { if (numConc != null) numConc.Enabled = !chkSmartConc.Checked; };
             Controls.Add(chkSmartConc);
-            Controls.Add(MakeLabel(L.T("Concurrent copies (1 - 32):", "النسخ المتزامن (1 - 32):", "Copies simultanées (1 - 32) :"), 20, 134, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Concurrent copies", "النسخ المتزامن", "Copies simultanées"), 24, 148, Theme.Text));
             numConc = new NumericUpDown();
             numConc.Minimum = 1; numConc.Maximum = 32;
             numConc.Value = Math.Max(1, Math.Min(32, Settings.Concurrency));
-            numConc.SetBounds(300, 130, 100, 22);
-            numConc.BackColor = Theme.Panel2; numConc.ForeColor = Color.White;
+            numConc.SetBounds(fx, 144, fw, 24);
+            numConc.BackColor = Theme.Panel2; numConc.ForeColor = Theme.Text;
             numConc.Enabled = !chkSmartConc.Checked;
             Controls.Add(numConc);
             Label hint = MakeLabel(L.T("Smart: <500KB→up to 10, 500KB-100MB→taper to 1, >100MB→1. Disable to set fixed value.",
                                        "ذكي: <500 ك.ب→حتى 10، 500 ك.ب-100 م.ب→تناقص إلى 1، >100 م.ب→1. عطّل لتعيين قيمة ثابتة.",
                                        "Intelligent : <500 Ko→jusqu'à 10, 500 Ko-100 Mo→réduction à 1, >100 Mo→1. Désactiver pour fixer une valeur."),
-                                  20, 154, Theme.Dim);
+                                  24, 180, Theme.Dim);
             hint.AutoSize = false;
-            hint.SetBounds(20, 154, 390, 32);
+            hint.SetBounds(24, 180, 512, 36);
             Controls.Add(hint);
 
-            Controls.Add(MakeLabel(L.T("Copy buffer per thread:", "ذاكرة النسخ لكل خيط:", "Tampon de copie par thread :"), 20, 186, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Copy buffer per thread", "ذاكرة النسخ لكل خيط", "Tampon de copie par thread"), 24, 224, Theme.Text));
             cmbBuf = new ComboBox();
             cmbBuf.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbBuf.Items.AddRange(new object[] { "64 KB", "256 KB", "1 MB", "4 MB" });
             int bi = 1;
             for (int i = 0; i < BufSizes.Length; i++) if (BufSizes[i] == Settings.BufferKB) bi = i;
             cmbBuf.SelectedIndex = bi;
-            cmbBuf.SetBounds(240, 182, 160, 22);
+            cmbBuf.SetBounds(fx, 218, fw, 24);
             Controls.Add(cmbBuf);
 
-            Controls.Add(MakeLabel(L.T("Copy engine:", "محرك النسخ:", "Moteur de copie :"), 20, 222, Theme.Text));
+            Controls.Add(MakeLabel(L.T("Copy engine", "محرك النسخ", "Moteur de copie"), 24, 256, Theme.Text));
             cmbEngine = new ComboBox();
             cmbEngine.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbEngine.Items.Add(L.T("Built-in", "مدمج", "Intégré"));
             if (Settings.RobocopyAvailable) cmbEngine.Items.Add(L.T("Robocopy (Windows)", "Robocopy (ويندوز)", "Robocopy (Windows)"));
             cmbEngine.SelectedIndex = Math.Max(0, Math.Min(cmbEngine.Items.Count - 1, Settings.Engine));
             cmbEngine.Enabled = cmbEngine.Items.Count > 1;
-            cmbEngine.SetBounds(240, 218, 160, 22);
+            cmbEngine.SetBounds(fx, 250, fw, 24);
             Controls.Add(cmbEngine);
 
-            Controls.Add(MakeLabel(L.T("If a file already exists:", "إذا كان الملف موجوداً:", "Si un fichier existe déjà :"), 20, 258, Theme.Text));
+            Controls.Add(MakeLabel(L.T("If a file already exists", "إذا كان الملف موجوداً", "Si un fichier existe déjà"), 24, 288, Theme.Text));
             cmbConf = new ComboBox();
             cmbConf.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbConf.Items.AddRange(new object[] {
@@ -5181,8 +5552,10 @@ namespace SuperCopyApp
                 L.T("Overwrite only if newer", "استبدال فقط إذا كان أحدث", "Remplacer seulement si plus récent"),
                 L.T("Ask first", "السؤال أولاً", "Demander d'abord") });
             cmbConf.SelectedIndex = Math.Max(0, Math.Min(4, Settings.Conflict));
-            cmbConf.SetBounds(240, 254, 160, 22);
+            cmbConf.SetBounds(fx, 282, fw, 24);
             Controls.Add(cmbConf);
+
+            AddSeparator(328);
 
             chkClose = new CheckBox();
             chkClose.Text = L.T("Close the window automatically when finished",
@@ -5192,7 +5565,7 @@ namespace SuperCopyApp
             chkClose.ForeColor = Theme.Text;
             chkClose.BackColor = Theme.Bg;
             chkClose.Checked = Settings.AutoClose;
-            chkClose.Location = new Point(20, 294);
+            chkClose.Location = new Point(24, 344);
             Controls.Add(chkClose);
 
             chkVerify = new CheckBox();
@@ -5203,7 +5576,7 @@ namespace SuperCopyApp
             chkVerify.ForeColor = Theme.Text;
             chkVerify.BackColor = Theme.Bg;
             chkVerify.Checked = Settings.Verify;
-            chkVerify.Location = new Point(20, 320);
+            chkVerify.Location = new Point(24, 372);
             Controls.Add(chkVerify);
 
             chkDefault = new CheckBox();
@@ -5214,41 +5587,45 @@ namespace SuperCopyApp
             chkDefault.ForeColor = Theme.Text;
             chkDefault.BackColor = Theme.Bg;
             chkDefault.Checked = Settings.DefaultCopy;
-            chkDefault.Location = new Point(20, 346);
+            chkDefault.Location = new Point(24, 400);
             Controls.Add(chkDefault);
 
-            Controls.Add(MakeLabel(L.T("Explorer right-click menu", "قائمة النقر بزر الماوس الأيمن في المستكشف", "Menu clic droit de l'Explorateur"), 20, 390, Theme.Cyan));
-            Button bi2 = UI.MakeButton(L.T("&Install menu", "تثبيت القائمة (&I)", "&Installer le menu"), 180, Color.FromArgb(40, 150, 100));
-            Button br = UI.MakeButton(L.T("&Remove menu", "إزالة القائمة (&R)", "&Supprimer le menu"), 180, Color.FromArgb(190, 60, 80));
-            bi2.Location = new Point(20, 412);
-            br.Location = new Point(220, 412);
+            AddSeparator(436);
+
+            Controls.Add(MakeLabel(L.T("Explorer context menu", "قائمة النقر بزر الماوس الأيمن", "Menu clic droit"), 24, 452, Theme.Dim));
+            Button bi2 = UI.MakeButton(L.T("&Install menu", "تثبيت القائمة (&I)", "&Installer le menu"), 248);
+            Button br = UI.MakeButton(L.T("&Remove menu", "إزالة القائمة (&R)", "&Supprimer le menu"), 248);
+            bi2.Location = new Point(24, 476);
+            br.Location = new Point(288, 476);
             bi2.Click += new EventHandler(OnInstall);
             br.Click += new EventHandler(OnRemove);
             Controls.Add(bi2);
             Controls.Add(br);
-            lblState = MakeLabel("", 20, 450, Theme.Dim);
+            lblState = MakeLabel("", 24, 516, Theme.Dim);
             Controls.Add(lblState);
             Controls.Add(MakeLabel(L.T("Windows 11: entries are under \"Show more options\" (Shift+F10).",
                                        "ويندوز 11: تظهر الإدخالات تحت \"إظهار المزيد من الخيارات\" (Shift+F10).",
-                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 20, 470, Theme.Dim));
+                                       "Windows 11 : les entrées sont sous « Afficher plus d'options » (Maj+F10)."), 24, 536, Theme.Dim));
             RefreshState();
 
-            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 20, 508, Theme.Text));
-            Button babt = UI.MakeButton(L.T("&About", "حول (&A)", "À &propos"), 84, Color.FromArgb(90, 96, 130));
-            babt.Location = new Point(132, 502);
+            AddSeparator(576);
+
+            Controls.Add(MakeLabel(L.T("Version ", "الإصدار ", "Version ") + Updates.Current, 24, 596, Theme.Dim));
+            Button babt = UI.MakeButton(L.T("&About", "حول (&A)", "À &propos"), 96);
+            babt.Location = new Point(240, 588);
             babt.Click += new EventHandler(OnAbout);
             Controls.Add(babt);
-            btnUpdate = UI.MakeButton(L.T("&Check for updates", "التحقق من التحديثات (&C)", "Rec&hercher des mises à jour"), 190, Color.FromArgb(60, 120, 140));
-            btnUpdate.Location = new Point(226, 502);
+            btnUpdate = UI.MakeButton(L.T("&Check for updates", "التحقق من التحديثات (&C)", "Rec&hercher des mises à jour"), 192);
+            btnUpdate.Location = new Point(fx, 588);
             btnUpdate.Click += new EventHandler(OnCheckUpdate);
             Controls.Add(btnUpdate);
 
-            Button ok = UI.MakeButton(L.T("&Save", "حفظ (&S)", "&Enregistrer"), 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton(L.T("Cance&l", "إلغاء (&C)", "&Annuler"), 90, Color.FromArgb(70, 76, 110));
-            Button reset = UI.MakeButton(L.T("Reset to &default", "استعادة الافتراضي (&D)", "&Réinitialiser"), 165, Color.FromArgb(120, 96, 60));
-            ok.Location = new Point(236, 542);
-            cancel.Location = new Point(334, 542);
-            reset.Location = new Point(20, 542);
+            Button ok = UI.MakeButton(L.T("&Save", "حفظ (&S)", "&Enregistrer"), 96);
+            Button cancel = UI.MakeButton(L.T("Cance&l", "إلغاء (&C)", "&Annuler"), 88);
+            Button reset = UI.MakeButton(L.T("Reset to &default", "استعادة الافتراضي (&D)", "&Réinitialiser"), 176);
+            ok.Location = new Point(fx, 632);
+            cancel.Location = new Point(fx + fw - 88, 632);
+            reset.Location = new Point(24, 632);
             ok.Click += new EventHandler(OnSave);
             cancel.Click += new EventHandler(OnCancel);
             reset.Click += new EventHandler(OnReset);
@@ -5258,6 +5635,15 @@ namespace SuperCopyApp
             AcceptButton = ok;
             CancelButton = cancel;
             Shown += new EventHandler(OnShownOnce);
+        }
+
+        // a quiet hairline between groups
+        void AddSeparator(int y)
+        {
+            Panel p = new Panel();
+            p.BackColor = Theme.Border;
+            p.SetBounds(24, y, 512, 1);
+            Controls.Add(p);
         }
 
         // on open: offer to add the per-user Explorer menu when it is missing,
@@ -5282,11 +5668,10 @@ namespace SuperCopyApp
         void RefreshState()
         {
             bool on = ShellIntegration.IsInstalled();
-            string os = (Bitness.Is64Os ? L.T("64-bit", "64 بت", "64 bits") : L.T("32-bit", "32 بت", "32 bits")) +
-                        " " + L.T("Windows", "ويندوز", "Windows");
+            string os = Bitness.Is64Os ? L.T("64-bit", "64 بت", "64 bits") : L.T("32-bit", "32 بت", "32 bits");
             lblState.Text = (on
-                ? L.T("Status: installed (", "الحالة: مثبتة (", "État : installé (") + os + ")"
-                : L.T("Status: not installed (", "الحالة: غير مثبتة (", "État : non installé (") + os + ")");
+                ? L.T("Installed · ", "مثبتة · ", "Installé · ")
+                : L.T("Not installed · ", "غير مثبتة · ", "Non installé · ")) + os;
             lblState.ForeColor = on ? Theme.Green : Theme.Dim;
         }
 
@@ -5383,7 +5768,7 @@ namespace SuperCopyApp
     // ================================================================
     //  "File already exists" prompt used by the "Ask first" setting
     // ================================================================
-    class ConflictDialog : Form
+    class ConflictDialog : ChromeForm
     {
         readonly RadioButton[] opts = new RadioButton[4];
         CheckBox chkSession;
@@ -5399,27 +5784,24 @@ namespace SuperCopyApp
             Text = L.T("Super Copy - File exists", "Super Copy - الملف موجود", "Super Copy - Le fichier existe");
             Font = Theme.Cell;
             BackColor = Theme.Bg;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;              // coordinates below are 96 dpi design pixels
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(400, 268);
+            ClientSize = new Size(480, 336);
             L.ApplyRtl(this, true);
 
-            Controls.Add(MakeLabel(L.T("A file already exists in the destination:", "يوجد ملف بهذا الاسم في الوجهة:", "Un fichier existe déjà dans la destination :"), 16, 14, Theme.Text));
-            Label name = MakeLabel(Path.GetFileName(dst), 16, 36, Theme.Cyan);
+            Controls.Add(MakeLabel(L.T("A file already exists in the destination:", "يوجد ملف بهذا الاسم في الوجهة:", "Un fichier existe déjà dans la destination :"), 24, 24, Theme.Dim));
+            Label name = MakeLabel(Path.GetFileName(dst), 24, 48, Theme.Text);
             name.AutoSize = false;
             name.AutoEllipsis = true;
-            name.SetBounds(16, 36, 368, 18);
+            name.SetBounds(24, 48, 432, 20);
             Controls.Add(name);
 
             // size and last write time of both files: the "overwrite if newer" choice
             // needs them, a file name alone is not enough to decide
-            Controls.Add(MakeLabel(L.T("Existing: ", "الموجود: ", "Existant : ") + FileInfoText(dst), 16, 58, Theme.Dim));
-            Controls.Add(MakeLabel(L.T("Incoming: ", "الوارد: ", "Entrant : ") + FileInfoText(src), 16, 76, Theme.Dim));
+            Controls.Add(MakeLabel(L.T("Existing: ", "الموجود: ", "Existant : ") + FileInfoText(dst), 24, 76, Theme.Dim));
+            Controls.Add(MakeLabel(L.T("Incoming: ", "الوارد: ", "Entrant : ") + FileInfoText(src), 24, 96, Theme.Dim));
 
             string[] cap = { L.T("&Overwrite the existing file", "استبدال الملف الموجود (&O)", "&Remplacer le fichier existant"),
                              L.T("&Skip this file", "تخطي هذا الملف (&S)", "&Ignorer ce fichier"),
@@ -5432,7 +5814,7 @@ namespace SuperCopyApp
                 opts[i].AutoSize = true;
                 opts[i].ForeColor = Theme.Text;
                 opts[i].BackColor = Theme.Bg;
-                opts[i].Location = new Point(18, 104 + i * 24);
+                opts[i].Location = new Point(24, 128 + i * 32);
                 Controls.Add(opts[i]);
             }
             opts[1].Checked = true;      // "skip" is the safe default: Enter never destroys a file
@@ -5442,19 +5824,20 @@ namespace SuperCopyApp
             chkSession.AutoSize = true;
             chkSession.ForeColor = Theme.Text;
             chkSession.BackColor = Theme.Bg;
-            chkSession.Location = new Point(18, 204);
+            chkSession.Location = new Point(24, 264);
             Controls.Add(chkSession);
 
-            Button ok = UI.MakeButton(L.T("OK", "موافق", "OK"), 90, Color.FromArgb(70, 90, 170));
-            Button cancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 90, Color.FromArgb(70, 76, 110));
-            ok.Location = new Point(196, 232);
-            cancel.Location = new Point(294, 232);
+            Button ok = UI.MakeButton(L.T("OK", "موافق", "OK"), 88);
+            Button cancel = UI.MakeButton(L.T("&Cancel", "إلغاء (&C)", "&Annuler"), 88);
+            ok.Location = new Point(272, 288);
+            cancel.Location = new Point(368, 288);
             ok.Click += new EventHandler(OnOk);
             cancel.Click += new EventHandler(OnCancel);
             Controls.Add(ok);
             Controls.Add(cancel);
             AcceptButton = ok;
             CancelButton = cancel;
+            AddChrome(Text, "", 40, false, false, false, true);
         }
 
         static string FileInfoText(string path)

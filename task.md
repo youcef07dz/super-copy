@@ -1,74 +1,118 @@
-# Tasks
+# Super Copy — UI redesign
 
-- [x] Structure pass (no behavior change): add file-header Contents TOC; add banners for QueueStore + ShellIntegration; fix misplaced "Explorer context menu" banner; reorder nothing
-- [x] Build OK + `/copy`→`/paste` smoke test after structure pass
-- [x] Compact mode: toggle + `settings.ini` persistence (load/save/apply on start)
-- [x] Remove Golden theme: single Default palette, drop `Theme=` persistence + Settings combo
-- [x] "Ask first" conflict option (value 4): `Settings.AskSession`, `ConflictAsker`/`ConflictPrompt`, `DoCopy` branch, Settings combo, `ConflictDialog` + `MainForm` wiring
-- [x] Concurrency range 1–8 → 1–32 (Settings clamp, `CopyJob.Start`, `EnsureWorkers` already dynamic)
-- [x] Robocopy engine option: `Settings.Engine` (0 built-in / 1 robocopy), `Load`/`Save`, Settings combo, `DoCopy` dispatch, `CopyJob.RoboCopy` + built-in fallback
-- [x] Build OK; refresh `%APPDATA%\SuperCopy\SuperCopy.exe`
-- [x] E2E: `Engine=1` copies correctly; keep-both forces built-in fallback (`a (2).bin`); no lingering process; `settings.ini` restored
-- [x] Safety fixes: A queue delete-after-enqueue; B atomic `settings.ini`/`cliplist` writes; C overwrite/move backup+restore; D same-drive move `File.Replace`
-- [x] Feature #2: Error report button (shows on failure) + popup + copy-to-clipboard
-- [x] Feature #2 self-check: `/selftest` → `CopyJob.SelfTest()` exit 0
-- [x] build.cmd: pass `/langversion:ISO-2` only to v3.5+/v4.0 (v2.0 csc rejects it); builds green with v2.0.50727
-- [x] Fixes C/D smoke test: overwrite + move-overwrite pass for `Engine=0` and `Engine=1`; no `.sctmp` leftovers; `settings.ini` restored
-- [x] Feature #3: "Copy to dest..." — static menu verb (`*` + Directory) → `/todevice` → clip (`clipboard.device.txt`) → destination folder picker → `MainForm`
-- [x] Feature #3 self-check: `/selftest` extended with device-clip isolation asserts (exit 0)
-- [x] Settings window: "Reset to default" button (fills defaults; Save persists)
-- [x] EXE icon: `SuperCopy.ico` (32x32) committed to repo + `/win32icon` in `build.cmd`; icon embedded in build EXE and installed copy
-- [x] Safety: destination free-space check before copying (`FreeSpace`, `spaceLimit` in `ScanMain`, per-file guard in `AddFile` → abort with "Not enough free space…")
-- [x] Safety: MD5-verify copy before deleting source on Move (`HashFile`/`SameHash`, guard before `File.Delete(src)` in `DoCopy`)
-- [x] Safety self-check: `/selftest` extended (exit codes 6–9: hash match/mismatch + free-space); build green; E2E move-verify passes (src removed, dst intact)
-- [x] Big-first ordering: `ScanMain` `finally` sorts `items` by `Size` descending (re-indexes `Index`); `WorkerMain` gate changed to wait for `ScanDone` so workers consume the post-sort list
-- [x] Ordering self-check: `/selftest` extended (exit 10: scan leaves items sorted by `Size` descending); build green; headless `/copy`+`/paste` E2E passes (files intact, workers released, no hang)
-- [x] >15-item shell-menu fix: `MultiSelectModel="Player"` on each cascade parent + every leaf verb (`*`/`Directory`/`Drive`) and Background `SuperPaste`; legacy Document's 15-item cap raised to 100 (legacy Player still invokes once per file, so the `ClipStore` merge design is unchanged) [cascade later replaced — see below]
-- [x] Drag & drop: drop files/folders on the window (`this` + `lv`/`header`/`bottom`/`jobBox`) → menu with 2 options: "1. Same destination (last job's folder)" / "2. Another destination..." (browse dialog, seeded); first job ever → straight to browse; `lastDest` field updated in `AddJob`
-- [x] Drag-drop self-check: `/selftest` exit 11 (FileDrop `DataObject` round-trip, works headless)
-- [x] Install/verify: build OK; installed exe refreshed; `/install`; `reg query` confirms `MultiSelectModel=Player` on all parents + leaves; installed `/selftest` exit 0
-- [x] Multi-select "Super Copy" bug (multi-file selection ran the file's default verb → "This file does not have an app associated…"): replaced the `ExtendedSubCommandsKey` cascade with **flat top-level verbs**, each with its own `command` — `SuperCopy`/`SuperCut`/`SuperToDevice` on `*`+`Directory`, `SuperPaste` on `Directory`+`Drive`, Background `SuperPaste`; `Cascade`→`Verb`, `IsInstalled` checks `*\shell\SuperCopy\command`, `OldKeys` retires stale cascade child subkeys; every verb keeps `MultiSelectModel="Player"`
-- [x] Flat-verb verify: build OK (`v2.0.50727`); `/selftest` exit 0; installed exe refreshed (SHA-256 `90208DAB…`); `/install`; `reg query` (both views) shows all flat verbs with `command`, no `ExtendedSubCommandsKey`, `Drive\shell\SuperCopy` gone, no stale `\shell` children
-- [x] Shell submenu: copy/cut/copy-to-dest under one `Super Copy >` cascade (`*\shell\SuperCopy`, `Directory\shell\SuperCopy`); `ExtendedSubCommandsKey` + `MultiSelectModel=Player` on parent and leaves
-- [x] Super Paste is **outside** the submenu and empty-space only: flat verb `Directory\Background\shell\SuperPaste` → `/paste "%V"`; removed from the folder submenu and from the drive root (no `Drive\shell\SuperCopy` at all)
-- [x] Multi-select root cause fixed: the old cascade parents had no `MultiSelectModel`, so the default Document model dropped the submenu and Explorer ran the selection's default verb; `Player` keeps the cascade
-- [x] Cascade verify: build OK (`v2.0.50727`); `/selftest` exit 0 for build **and** installed exe (exit 12–17 guards: `ExtendedSubCommandsKey`, `Player`, leaf command, paste flat + no submenu, retired keys gone); `/install`; `reg query` (both views) confirms the tree; installed exe refreshed to SHA-256 `9B52B540…`
-- [x] Access denied → "Retry as administrator?": `CopyJob.AccessDenied` + `IsAccessDenied`, `Admin` (IsElevated/UAC `Relaunch`), `MainForm.Advance` prompt + `QueueFailed` re-queue + `/queue` mode (`MainForm(null)`, PollQueue feeds it); `/selftest` exit 18
-- [x] Update check v1: repo `update.txt` (= `1`); `Updates` class (`Current=1`, `ParseVersion`, `Check` reads raw GitHub `update.txt`, downloads `SuperCopy.exe` when newer, delayed-copy `.cmd` swap + relaunch); Settings "Version 1" label + "Check for updates" button; `/selftest` exit 19
-- [x] Fix: "Ask first" popped once per worker on multi-file copy (modal dialog pumps queued `Invoke`s, so the `AskSession` guard was too late) → `Settings.AskPrompting` CAS: one worker asks, others wait + reuse answer; `/selftest` exit 20 (2 threads, 1 prompt); re-read `AskSession` after winning the CAS (scheduler-delay window let a second worker re-ask)
-- [x] >15 multi-select broken again with the static cascade (Explorer drops it despite `MultiSelectModel=Player`) → reverted to flat top-level verbs (`SuperCopy`/`SuperCut`/`SuperToDevice` on `*`+`Directory`, `SuperPaste` on Background); `Cascade()` deleted; `IsInstalled` checks `*\shell\SuperCopy\command`; selftest guards 12–17 rewritten for flat layout; menu reinstalled, selftest exit 0
-- [x] Startup checks in SettingsForm `Shown`: installed = `%APPDATA%\SuperCopy\SuperCopy.exe` exists (else ask "Install now?" → `OnInstall`); version = silent `Updates.GetLatest()` on a background thread (5 s timeout, offline-safe) → `Updates.OfferUpdate` when GitHub is newer; `QuickWebClient` + `GetLatest` + `OfferUpdate` extracted
-- [x] Offline update check: `Updates.FileVer` (assembly major version; `AssemblyVersion` must mirror `Updates.Current`) + `Updates.CheckLocal` (running exe newer than %APPDATA% copy → ask, direct copy or delayed swap); wired into startup after the install check; `DelayedCopy` helper (relaunch optional); `/selftest` exit 21
-- [x] Add About button (Settings) with build time + repo link; sc3 compact screenshot + README
-- [x] AV false positives: replace auto-update download/swap with "open releases page" (remove dropper pattern); drop `ExeUrl`/`ApplyAndRestart`/`DelayedCopy`
-- [x] Add publisher metadata (`AssemblyCompany`/`Product`/`Copyright`)
-- [x] Draft AV false-positive reports (McAfee/SecureAge/Arctic Wolf)
-- [x] Localization: English/Arabic/French + Auto (OS UI culture) in Settings; full string coverage; Arabic RTL incl. mirrored list columns and custom-drawn header/bars; live apply after Save; build `/codepage:65001`; selftest exit 0
-- [ ] Code-sign the exe (needs a real Authenticode cert + signtool; self-signed does not help reputation)
-- [x] Installer experiment added then reverted (made AV worse: Program Files self-copy + HKLM + `MoveFileEx` + reflection/COM); back to portable per-user menu with `ShellIntegration.Install(exe)` (no `%APPDATA%` self-copy); `WriteIco`/`IcoFile`/`CheckLocal` removed; build + `/selftest` green
-- [x] AV hardening: no self-elevation/relaunch (`/queue`, `Admin.Relaunch`, `QueueFailed` removed; access denied → one-time "restart as administrator" hint); no startup update network (`StartupUpdateCheck`, `GetLatest`, `QuickWebClient` removed; manual check only); kernel32 `IsWow64Process` replaced by env-var bitness; build uses .NET 3.5 `csc.exe` + embedded `asInvoker` `app.manifest` (`/win32manifest`), runtime still 2.0; README (EN/AR/FR) updated; build + `/selftest` green
-- [x] Settings Save refreshes the installed Explorer menu labels for the current language (`ShellIntegration.Install` only when `IsInstalled()`); build + `/selftest` green
-- [x] Install copies the exe to `%APPDATA%\SuperCopy\SuperCopy.exe` and Remove deletes it; every shell verb points at that AppData copy (`Installer` class, `Paths.ExeInstalled`, `IsInstalled` also requires the file, `.old` sweep for the running-copy case); build + `/selftest` exit 0; `/install`//`/uninstall` E2E verified (file + registry)
-- [x] Access-denied fallback restored: prompt "Retry the failed items as administrator?" → `QueueFailed` re-enqueues failed items → `Admin.Relaunch()` (UAC `runas`, `/queue` mode via `MainForm(null)`, `retryEscalated` stops double-poll); build + `/selftest` exit 0; `/queue` launches clean. Re-adds the self-elevation removed in the AV-hardening pass.
-- [x] XXH3-64 verify on every copy/move (XXH3 class, Settings.Verify default on + Settings checkbox); mismatch restores backup and keeps source; /selftest vectors pass; copy/overwrite/move E2E green
-- [x] Release v2: version bump (Updates.Current, AssemblyVersion/FileVersion, update.txt), HISTORY.md with v2 what's new, old v1 .cs/.exe archived in old/v1/, README History links + new SHA-256; build + installed /selftest exit 0
-- [x] v3: default copy — `/agent` helper (WH_KEYBOARD_LL) swallows Ctrl+V in Explorer, reads the file list + move flag from the clipboard (CF_HDROP / CF_PREFERREDDROPEFFECT), resolves the destination through the Shell.Application COM (`LocationURL` / selected folder), then runs the normal `CopyJob` (same engine, conflict rules, XXH3 verify); Settings option "Use Super Copy as the default copy", on by default
-- [x] v3: the helper starts with Windows while the option is on (HKCU `Run` = `"<exe>" /agent`, written by `HookAgent.Autostart`, removed when the option is off); the running helper stops itself when the option is switched off
-- [x] v3: the copy window comes on top while the job runs (`TopMost` + `BringToFront`, dropped in `AllDone`), also for the Explorer-verb and queue flows
-- [x] v3: two progress bars in the header — one for the whole job, one for the file being copied — same size, visible in full and compact mode
-- [x] v3 E2E: Ctrl+V in a real Explorer window copies with Super Copy (shell paste suppressed), cut+paste moves the file (source deleted), Explorer paste does not run; helper stops when the option is off; build + installed /selftest exit 0
-- [x] Queue view: adding files to the queue scans them right away and lists every file of every job in the main list; the header (total size, progress bar, average speed, ETA, file count) and the window title cover the whole queue, not just the running job
-- [x] Idle CPU: the window repainted the header, the list and the job strip 4x/second even when idle -> the header is now repainted only when a value changed or the scan marquee animates, the list only while a job runs / when a file is added / when the last job ends, the job strip only while a job runs; UpdateHeader compares the shown values and sets headerDirty; idle CPU 0.3% -> 0.0%
-- [x] Too-frequent polling: the queue is polled every 2nd tick (0.5 s) -> every 4th tick (1 s); the /agent helper re-read `settings.ini` every 2 s forever -> it only reads it when the file's write time changed; the keyboard hook checks Ctrl/Alt for every key of the whole system -> only for `V`
-- [x] Per-repaint allocations: `Gfx.Bar` created a `Pen` on every bar -> one shared `Theme.PenBorder`; the list only scrolls when the active file changes (`lastActiveRow`) instead of twice per tick
-- [x] Safety pass (engine): a vanished source is an error not a skip; the destination is set aside with a unique name and restored on any failure; the length is checked even without hash verify; two items with the same destination are serialized; a failed robocopy run is an error, not a "cancelled"; the scan and the workers can no longer crash the program
-- [x] Safety pass (agent): the cut/copy flag is read from locked clipboard memory; long paths are no longer cut short; `Ctrl+V` is only taken over when the clipboard holds files; the hook result and the agent paste path are checked; the helper only autostarts from the installed copy; `settings.ini` is written atomically
-- [x] Safety pass (window): the conflict dialog preselects "skip" and stays on top, cancelling skips the waiting files too; the close button does not block the interface (the workers are cancelled and the window closes later); the close question defaults to the safe answer; Pause/Cancel act on the running job; "Reset to default" no longer changes anything on Cancel; the queue job is claimed by moving the file
-- [x] Safety self-check: `/selftest` exit 24 (vanished source) + exit 25 (failed copy restores the old destination); build green; E2E copy + move + queue + agent verified; installed copy refreshed and `/selftest` exit 0
-- [x] UI performance: the file list repaints only the rows that really change (`MainForm.RepaintChangedRows`/`InvalidateRow`, `CopyItem.PaintedState`), the whole list staying as a 5 s safety net; virtual-mode rows and the formatted size are built once per file (`CopyItem.Row`/`SizeText`) and the row→item lookup of one row is reused for its five other cells. Cells painted during a 4.2 GB copy: 287–339/s → 59/s (one run 0/s); total process CPU unchanged within noise (I/O dominates)
-- [x] Custom scrollbars, vertical **and** horizontal (`ScrollThumb`): cover the list's native bars, theme track + rounded gradient thumb with grip lines, hover highlight, track click jumps, thumb drag, wheel forwarding, RTL mirroring, drop target; each bar is shown only while its axis scrolls; the list is scrolled with `LVM_SCROLL` (`WM_VSCROLL` thumb tracking is ignored by ListView); `/selftest` exit 31 checks the thumb geometry
-- [x] Scrollbar verify: build + `/selftest` exit 0; live window: vertical track click pos 125→187, vertical drag 156→113, shrink window → horizontal bar appears and the vertical one shortens, horizontal click 0→18, horizontal drag 18→0
-- [x] XXH3 speed pass: word reads through `BitConverter` on little-endian, the secret cached as 64-bit words for the aligned offsets of the hot loop, 64 KB reads instead of one 1 KB read per block, and one buffer set per thread instead of a fresh block buffer + accumulator per file. Verify-on copy of 1.6 GB: CPU 9.8–10.1 s → 5.3–5.5 s (~45% less), wall 12.2–12.8 s → 8.8–10.1 s; all known-answer vectors still pass
-- [x] Timer: 250 ms while a job runs, 1 s while idle; the queue poll and the auto-close delay are on the clock, not on tick counts. Idle UI ticks 20 per 5 s → 5 per 5 s; auto-close ~2.8 s after the copy; queue hand-off from a second instance still ~1 s
-- [x] Hover/repaint oddities: a fresh `ListViewItem` per retrieved row again (the control keeps hover/focus/selection state on the item object, so a shared instance showed it on the wrong row), the row background is filled in `lv_DrawItem` so an item-level repaint cannot leave stale pixels, and the list follows the active file again 2.5 s after the user last scrolled instead of freezing while the pointer is over the list
-- [x] Installed copy renamed to `%APPDATA%\SuperCopy\SuperCopyHelper.exe` (same name as the app made both processes indistinguishable) and uninstall fixed: `Installer.Remove` stops the helper (settings.ini watch), waits for the file, then deletes it; rename-to-`.old` fallback when it is the running copy; `Installer.Install` drops the old same-named copy; helper follows the setting (`HookAgent.Apply`); build + `/selftest` exit 0 (guard 30), install/uninstall/self-uninstall E2E green
+Scope: **UI only**, one file `SuperCopy.cs` (WinForms, GDI+, C# 2 / .NET 2.0, XP–11).
+Keep: engine, modes, Explorer menu, settings keys, 3 languages, RTL, no new deps, no images.
+
+## Direction
+
+- **Product.** Explorer shell file copier for Windows; one window shows the transfer.
+- **Character.** exact, quiet, mechanical.
+- **World.** file manager and disk activity: graphite panels, hairlines, mono figures.
+- **Moments.** the transfer bar and the file list — every file gets a thin progress rule.
+- **Signature.** one amber rule + right-aligned tabular figures; state is a small dot, never a colored button.
+
+## Audit (every sign found)
+
+| Where | Slop |
+|---|---|
+| `:1423-1440` | Navy-blue themed surfaces; background reads blue, not neutral |
+| `:1436-1437` | Cyan + violet as brand pair |
+| `:1486`, `:3556` | Cyan→violet gradients on title bar, header rule, scroll thumb, icon tile |
+| `:1556-1603` | Progress bar: gradient fill + white gloss + black text shadow |
+| `:1471-1485` | Rainbow bar states (blue, green, red, purple, orange) |
+| `:3713-3715`, `:3734`, `:5221-5248` | Every button a different saturated color |
+| `:1451-1454` | Tahoma bold everywhere; hierarchy has no size/color ladder |
+| `:1417-1439`, `:5071-5458` | Hardcoded odd spacing (9, 14, 46, 104, 118, 26…), no grid |
+| `:3749-3781` | Header buttons, bottom bar, job strip = three unaligned action areas |
+| `:5044-5065` | Job row bar hardcoded at 206 px from the right edge |
+| `:3557-3606` | Custom button paints no focus ring (keyboard users get nothing) |
+| `:1608-1630` | Logo = gradient rounded tile with white chevrons (classic AI mark) |
+| `:4258-4361` | Header copy: "Speed:", "Total ETA:", "Scanning folders...  N files found", trailing "..." |
+| `:4688`, `:3771` | "Co&mact" label |
+| `:1569-1575` | Looping marquee gradient |
+
+## Tokens
+
+| Role | Value |
+|---|---|
+| Bg / Panel / Row | `#131313` / `#1A1A1A` / `#161616` |
+| Track | `#0D0D0D` |
+| Border | `#2A2A2A` |
+| Text / Dim / Muted | `#ECECEC` / `#9C9C9C` / `#6F6F6F` |
+| Accent | `#E0A33C` (dark ink `#131313` on it) |
+| Ok / Fail / Pause | `#5FB37F` / `#D96A5C` / `#C99A3C` — dots and text only |
+| Selected / Hover | `#262626` / `#1E1E1E` |
+| Type | UI `Segoe UI 9` (Tahoma fallback), figures `Consolas 9` |
+| Weights | Regular + Bold only |
+| Radii | controls 8, panels 10, bars = height/2 |
+| Grid | 4 px; buttons 32 tall, page pad 16/24, row 26 |
+
+## Tasks
+
+### 1. Spacing
+- [x] Rebuild every coordinate on the 4 px grid: header 96, bottom bar 56, row 26, pad 16, gaps 8/12.
+- [x] One action row per area: Pause/Cancel/Settings left, "Close when finished" + error text right.
+- [x] Settings and Conflict dialogs: 24 label->field gap, 32 field rows, equal field width, section gaps 24.
+- [x] Job strip bar: width = client − 240, min 120, right-aligned (no fixed 206).
+
+### 2. Color
+- [x] Replace the palette with the tokens above. Navy, cyan, violet, gloss, gradient brushes go.
+- [x] Delete `LinearGradientBrush` everywhere (`:1512-1603`, `:3352-3384`, `:3446-3555`, `:4920-4935`, `:1608-1630`).
+- [x] Progress fill = accent only; state changes belong to the dot and word. Delete `BarColors` (`:1472`) and `BarBrush` (`:1521`).
+- [x] Border hairlines at 8–10% white; selection and hover are one surface step, no tint.
+- [x] Drop zebra rows (`:4964`); use a 1 px hairline separator.
+- [x] Red/green only on error count, failed rows and status dot.
+
+### 3. Icons and logo
+- [x] Redraw the app icon flat: dark square, one solid amber double chevron (`:1608-1630`).
+- [x] Wordmark = "Super Copy" in the UI font; no gradient tile in `TitleBar`.
+- [x] Scrollbar: plain 4 px thumb, no gradient, no grip lines.
+- [x] No icon set is added; text-only buttons stay. No emoji anywhere.
+
+### 4. Copy
+- [x] Header = one line: `Copying 3 items` / `Moving 1 folder`; second line = `12.4 MB/s · 1:12 left · 128 / 524 files`.
+- [x] `Waiting`, `Scanning · 128 files`, `Completed`, `Cancelled`, `Failed` — no `...`, no double spaces, no `Speed:` / `Total ETA:` prefixes.
+- [x] `Co&mact` -> `Compact` / `Files`, no mnemonic.
+- [x] Settings label: `Installed · 64-bit` (drop "Status:").
+- [x] Every new/changed string gets ar + fr (`L.T(en, ar, fr)`).
+
+### 5. Type
+- [x] `Theme.Cell` -> Segoe UI 9; `Title` 11 regular; Bold only for the leading figure.
+- [x] Figures (size, speed, %, ETA, counts) in Consolas, one format, right-aligned.
+- [x] Remove bold from body cells, status words and column headers (`:4258-4361`, `:4933`, `:4993-5035`).
+- [x] No negative tracking, no italics, no uppercase labels.
+
+### 6. Layout
+- [x] Header: title left, elapsed right, 8 px bar, one meta line. Hide/Compact become quiet 28 px text buttons in the header's top right.
+- [x] Keep window proportions (800×520 content, plus a 36 px title strip; min 660×416).
+- [x] Settings window: single column, labels left / fields right, hairline groups: Language, Copy, Behavior, Explorer menu, Version.
+- [x] Conflict dialog: file name, existing/incoming meter rows, 4 options at 32 px, safe default still "Skip".
+
+### 7. Details
+- [x] FlatButton: neutral surface, hairline, hover/press one step, disabled muted, **1 px accent focus ring**.
+- [x] One button style; delete the `Color back` argument from `UI.MakeButton` and all call sites.
+- [x] Bar text outside the bar (or inset 12 px), no shadow; radius = height/2.
+- [x] List row states readable apart: header (dim mono), pending, active (accent rule), done (dim), failed (red dot).
+- [x] Tooltips keep full error text where the row truncates.
+
+### 8. Motion
+- [x] Keep only the scanning marquee, neutral accent on track, no gloss.
+- [x] No other animation. Timer-driven repaint logic stays as is.
+
+### 9. Chrome and theme
+- [x] Each window draws its own strip (36 px main, 64 px Settings, 40 px dialogs): icon, wordmark, theme, minimize, maximize, close. No native caption.
+- [x] Drag a window by its strip (native move loop, so edge snapping works); double-click toggles maximize.
+- [x] Maximize fills the working area and restores to the exact same bounds; no frame, so no size drift.
+- [x] Sun / moon button switches light and dark live; `Theme=` in settings.ini keeps the choice.
+- [x] Button borders use the theme's warm line, accent on hover/press.
+
+### 10. Verify
+- [x] `build.cmd` compiles with no new warnings; `SuperCopy.exe /selftest` returns 0.
+- [ ] Open Settings and the progress window at 100% and 150% DPI; nothing clipped, nothing misaligned.
+- [x] RTL (Arabic) still mirrors; every new string translated.
+- [x] `grep LinearGradientBrush` = 0; no `Color.FromArgb(` button colors left.
+- [x] Contrast: Dim on Panel ≥ 4.5:1, accent on Panel ≥ 4.5:1, accent ink on accent ≥ 4.5:1.
+
+## Not doing
+
+No engine/settings changes beyond the theme key, no generated images, no icon pack, no new fonts bundled.
